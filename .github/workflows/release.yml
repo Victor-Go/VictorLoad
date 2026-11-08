@@ -28,7 +28,7 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
       ref: ${{ steps.v.outputs.ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -70,7 +70,7 @@ jobs:
       TAG: ${{ needs.detect.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect.outputs.ref }}
 
