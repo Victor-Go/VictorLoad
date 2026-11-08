@@ -61,6 +61,14 @@ test('pageKeyOf: single-video pages', () => {
 test('safeName', () => {
   assert.equal(safeName('  a<b>c  '), 'a b c');
   assert.equal(safeName('x'.repeat(200), 10), 'xxxxxxxxxx');
+  // truncation must not split an emoji or leave a trailing dot/space
+  assert.equal(safeName('ab😀cd', 3), 'ab');
+  assert.equal(safeName('abc. def', 4), 'abc');
+  assert.equal(safeName('bad\ud83d'), 'bad');
+  assert.equal(safeName('a\u0085b​c'), 'a b c');
+  // Windows reserved device names
+  assert.equal(safeName('CON'), '_CON');
+  assert.equal(safeName('nul.txt'), '_nul.txt');
 });
 
 test('classifyImages: size rules, site rules and tag-structure promotion', () => {

@@ -152,13 +152,25 @@ export function pageKeyOf(u) {
   }
 }
 
+const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
+
+/**
+ * Make a string safe as one Windows/Chrome file or folder name. Chrome's downloads API rejects
+ * the whole download ("Invalid filename") for illegal characters, lone surrogates (e.g. an emoji
+ * cut in half by truncation), trailing dots/spaces and reserved device names.
+ */
 export function safeName(s, max = 80) {
-  s = String(s || '')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/, '');
-  if (s.length > max) s = s.slice(0, max).trim();
+  const tidy = (x) =>
+    x
+      // lone surrogates, C0/C1 controls, bidi/zero-width marks, and characters Windows forbids
+      .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '')
+      .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[. ]+$/, '');
+  s = tidy(String(s || ''));
+  if (s.length > max) s = tidy(s.slice(0, max));
+  if (WIN_RESERVED.test(s)) s = '_' + s;
   return s;
 }
 
