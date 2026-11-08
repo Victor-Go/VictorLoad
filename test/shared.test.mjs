@@ -6,6 +6,7 @@ import {
   normKey,
   pageKeyOf,
   safeName,
+  mergeSettings,
   classifyImages,
   isMainVideo,
   DEFAULTS,
@@ -69,6 +70,7 @@ test('safeName', () => {
   // Windows reserved device names
   assert.equal(safeName('CON'), '_CON');
   assert.equal(safeName('nul.txt'), '_nul.txt');
+  assert.equal(formatName('{tab}', { tab: 'CON' }), '_CON');
 });
 
 test('classifyImages: size rules, site rules and tag-structure promotion', () => {
@@ -117,4 +119,10 @@ test('expandSavePath expands placeholders and never leaves the Downloads folder'
   assert.equal(mergeSettings({ subfolder: false }).savePath, '');
   assert.equal(mergeSettings({ subfolder: false, savePath: 'x' }).savePath, 'x');
   assert.equal('subfolder' in mergeSettings({ subfolder: false }), false);
+});
+
+test('mergeSettings: the old stored 1080 default becomes "highest", a user-picked height is kept', () => {
+  assert.equal(mergeSettings({ prefHeight: 1080 }).prefHeight, 0);
+  assert.equal(mergeSettings({ prefHeight: 1080, prefHeightUser: true }).prefHeight, 1080);
+  assert.equal(mergeSettings({ prefHeight: 720, prefHeightUser: true }).prefHeight, 720);
 });

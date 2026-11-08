@@ -1027,7 +1027,16 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    // An invalid name makes Chrome ignore the attribute and save under a random blob name,
+    // so turn anything illegal into a space instead (the extension was already sanitized by the caller).
+    const dot = filename.lastIndexOf('.');
+    const stem = (dot > 0 ? filename.slice(0, dot) : filename)
+      .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '')
+      .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[. ]+$/, '');
+    a.download = (stem || 'video') + (dot > 0 ? filename.slice(dot) : '');
     a.style.display = 'none';
     document.documentElement.appendChild(a);
     a.click();
