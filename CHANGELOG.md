@@ -4,6 +4,12 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.5]
+
+### Fixed
+
+- Videos attached to X link cards (for example amplify players on tweets that link to another site) are now detected. Their media data sits inside the card's JSON, which was previously skipped.
+
 ## [1.0.3]
 
 ### Fixed

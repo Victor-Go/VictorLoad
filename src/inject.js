@@ -54,6 +54,15 @@
     for (const k in o) {
       const v = o[k];
       if (v && typeof v === 'object') walk(v, c, depth + 1);
+      else if (k === 'string_value' && typeof v === 'string' && v[0] === '{') {
+        // Card videos (link cards / amplify players) keep their media in a JSON string
+        // inside card.binding_values (e.g. unified_card), so it has to be parsed and walked too.
+        try {
+          walk(JSON.parse(v), c, depth + 1);
+        } catch {
+          // Not JSON: an ordinary string binding value
+        }
+      }
     }
   }
 
