@@ -69,8 +69,11 @@ export const EN = {
   '记住我选的内容': 'Remember my selections',
   '点「下载选中」后，下次会在这个网站的「主要」列表中显示并勾选同类内容':
     'After you click "Download selected", similar content on this site will appear under "Main" and be selected next time',
-  '按站点分文件夹': 'One folder per site',
-  '保存到 下载/VictorLoad/站点名/': 'Saved to Downloads/VictorLoad/site-name/',
+  '保存位置（浏览器下载文件夹之内）': 'Save location (inside the browser\'s Downloads folder)',
+  '下载文件夹': 'Downloads folder',
+  'VictorLoad/站点名': 'VictorLoad/site-name',
+  '{site} 站点名 · {date} 日期（如 2026-11-08） · {year} 年 · {month} 月。用 / 分隔子文件夹；留空则直接保存到下载文件夹。':
+    '{site} site name · {date} date (e.g. 2026-11-08) · {year} year · {month} month. Use / to separate subfolders; leave empty to save straight into the Downloads folder.',
   'YouTube 优先 H.264': 'Prefer H.264 on YouTube',
   '可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效':
     'Save buffered audio and video as one MP4, up to 1080p. Reload the YouTube page after changing this setting.',

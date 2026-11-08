@@ -91,3 +91,22 @@ test('isMainVideo: resolution and duration thresholds', () => {
 test('the interface defaults to Chinese', () => {
   assert.equal(DEFAULTS.uiLang, 'auto');
 });
+
+test('expandSavePath expands placeholders and never leaves the Downloads folder', async () => {
+  const { expandSavePath, mergeSettings } = await import('../src/shared.js');
+  const now = new Date(2026, 10, 8);
+  assert.equal(expandSavePath('VictorLoad/{site}/', { site: 'example.com' }, now), 'VictorLoad/example.com/');
+  assert.equal(expandSavePath('{site}/{year}-{month}', { site: 'a.b' }, now), 'a.b/2026-11/');
+  assert.equal(expandSavePath('{date}', {}, now), '2026-11-08/');
+  assert.equal(expandSavePath('{site}', {}, now), 'misc/');
+  assert.equal(expandSavePath('', { site: 'a' }, now), '');
+  assert.equal(expandSavePath('../..\\x/./{site}', { site: 'a:b' }, now), 'x/a b/');
+  assert.equal(expandSavePath('C:\\Users', { site: 'a' }, now), 'C/Users/');
+  assert.equal(expandSavePath('//', { site: 'a' }, now), '');
+  // the old "one folder per site" switch is carried over
+  assert.equal(mergeSettings({}).savePath, 'VictorLoad/{site}/');
+  assert.equal(mergeSettings({ subfolder: true }).savePath, 'VictorLoad/{site}/');
+  assert.equal(mergeSettings({ subfolder: false }).savePath, '');
+  assert.equal(mergeSettings({ subfolder: false, savePath: 'x' }).savePath, 'x');
+  assert.equal('subfolder' in mergeSettings({ subfolder: false }), false);
+});

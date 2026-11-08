@@ -65,8 +65,11 @@ export const FR = {
   '记住我选的内容': 'Mémoriser mes sélections',
   '点「下载选中」后，下次会在这个网站的「主要」列表中显示并勾选同类内容':
     'Après un clic sur « Télécharger la sélection », les contenus similaires de ce site apparaîtront sous « Principaux » et seront sélectionnés la prochaine fois',
-  '按站点分文件夹': 'Un dossier par site',
-  '保存到 下载/VictorLoad/站点名/': 'Enregistré dans Téléchargements/VictorLoad/nom-du-site/',
+  '保存位置（浏览器下载文件夹之内）': 'Emplacement (dans le dossier Téléchargements du navigateur)',
+  '下载文件夹': 'Dossier Téléchargements',
+  'VictorLoad/站点名': 'VictorLoad/nom-du-site',
+  '{site} 站点名 · {date} 日期（如 2026-11-08） · {year} 年 · {month} 月。用 / 分隔子文件夹；留空则直接保存到下载文件夹。':
+    '{site} nom du site · {date} date (ex. 2026-11-08) · {year} année · {month} mois. Utilisez / pour séparer les sous-dossiers ; laissez vide pour enregistrer directement dans Téléchargements.',
   'YouTube 优先 H.264': 'Privilégier H.264 sur YouTube',
   '可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效':
     'Enregistre l’audio et la vidéo mis en mémoire tampon dans un seul fichier MP4, jusqu’à 1080p. Actualisez la page YouTube après avoir modifié ce réglage.',

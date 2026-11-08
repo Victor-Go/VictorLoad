@@ -13,7 +13,9 @@ export const DEFAULTS = {
   // Behavior
   showBadge: true, // show a green check on already-downloaded images/videos in the page
   autoRemember: true, // remember the tag structure of what was selected on "Download selected"
-  subfolder: true, // save into the VictorLoad/<site>/ subfolder
+  // Folder (inside the browser's Downloads folder) to save into. Placeholders: {site} {date} {year} {month}.
+  // Empty = the Downloads folder itself.
+  savePath: 'VictorLoad/{site}/',
   ytH264: true, // prefer H.264+AAC on YouTube so captured audio/video can be muxed into one mp4 (1080p max)
   // File name template. Placeholders: {tab} {name} {duration} {resolution}
   nameFormat: '{tab}',
@@ -27,6 +29,14 @@ export const DEFAULTS = {
   vidMode: 'main',
   prefHeight: 1080,
 };
+
+/** Stored settings on top of the defaults; the old "one folder per site" switch becomes a save path */
+export function mergeSettings(stored) {
+  const st = { ...(stored || {}) };
+  if (st.savePath === undefined && st.subfolder === false) st.savePath = '';
+  delete st.subfolder;
+  return { ...DEFAULTS, ...st };
+}
 
 export const HISTORY_LIMIT = 5000;
 
@@ -202,6 +212,29 @@ export function formatName(tpl, vars, max = 150) {
   s = s.replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, '');
   s = safeName(s, max);
   return s.replace(/^[\s._-]+|[\s._-]+$/g, '');
+}
+
+export const PATH_TOKENS = ['{site}', '{date}', '{year}', '{month}'];
+
+/**
+ * Expand the save path template into a relative folder like "VictorLoad/example.com/" ('' = Downloads itself).
+ * Each segment is cleaned of characters Windows rejects; empty, "." and ".." segments are dropped, so the
+ * result can never leave the Downloads folder.
+ *   {site}   host name of the page, without "www."
+ *   {date}   2026-11-08
+ *   {year} {month}   2026 / 11
+ */
+export function expandSavePath(tpl, vars = {}, now = new Date()) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  const y = String(now.getFullYear());
+  const m = p2(now.getMonth() + 1);
+  const v = { site: vars.site || 'misc', date: `${y}-${m}-${p2(now.getDate())}`, year: y, month: m };
+  const segs = String(tpl ?? '')
+    .replace(/\{(site|date|year|month)\}/g, (_, k) => safeName(v[k], 100))
+    .split(/[\\/]+/)
+    .map((x) => safeName(x, 100))
+    .filter((x) => x && x !== '.' && x !== '..');
+  return segs.length ? segs.join('/') + '/' : '';
 }
 
 export function maxHeight(it) {

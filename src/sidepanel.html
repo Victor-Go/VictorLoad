@@ -161,10 +161,25 @@
             <span><b>记住我选的内容</b><em>点「下载选中」后，下次会在这个网站的「主要」列表中显示并勾选同类内容</em></span>
             <input type="checkbox" class="toggle" data-s="autoRemember" />
           </label>
-          <label class="switchrow">
-            <span><b>按站点分文件夹</b><em>保存到 下载/VictorLoad/站点名/</em></span>
-            <input type="checkbox" class="toggle" data-s="subfolder" />
-          </label>
+          <div class="namebox">
+            <span class="hint">保存位置（浏览器下载文件夹之内）</span>
+            <div class="presets">
+              <button class="chip2" data-path-preset="">下载文件夹</button>
+              <button class="chip2" data-path-preset="VictorLoad/{site}/">VictorLoad/站点名</button>
+            </div>
+            <input id="savePath" class="textinp" type="text" data-s="savePath" spellcheck="false" placeholder="VictorLoad/{site}/" />
+            <div class="presets">
+              <span class="hint">插入：</span>
+              <button class="chip2 mono" data-path-token="{site}">{site}</button>
+              <button class="chip2 mono" data-path-token="{date}">{date}</button>
+              <button class="chip2 mono" data-path-token="{year}">{year}</button>
+              <button class="chip2 mono" data-path-token="{month}">{month}</button>
+            </div>
+            <p class="hint">
+              {site} 站点名 · {date} 日期（如 2026-11-08） · {year} 年 · {month} 月。用 / 分隔子文件夹；留空则直接保存到下载文件夹。
+            </p>
+            <div class="example"><span>示例</span><code id="pathPreview"></code></div>
+          </div>
           <label class="switchrow">
             <span><b>YouTube 优先 H.264</b><em>可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效</em></span>
             <input type="checkbox" class="toggle" data-s="ytH264" />

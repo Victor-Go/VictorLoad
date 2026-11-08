@@ -1,6 +1,7 @@
 // Offscreen document: downloads HLS segments (AES-128 and fMP4 init segments supported),
 // merges them into one Blob and hands it back to the background for download
 import { parseM3U8, EXTERNAL_AUDIO_ERROR } from './hlsparse.js';
+import { flattenFragmentedMp4 } from './mp4flat.js';
 
 const blobUrls = new Map();
 const jobs = new Map(); // survives service worker restarts for as long as this document is alive
@@ -86,6 +87,31 @@ function hexToBytes(hex) {
   return out;
 }
 
+/**
+ * Repackage MPEG-TS segments as a standard MP4 (H.264 + AAC) without re-encoding: mux.js turns them into
+ * fragmented MP4, which mp4flat.js then rewrites with the real duration, a keyframe index and interleaved
+ * audio/video so that players can seek. Resolves to null when the library is missing or the stream has no
+ * H.264/AAC that can be repackaged.
+ */
+export async function tsToMp4(segments) {
+  const Transmuxer = globalThis.muxjs?.mp4?.Transmuxer || globalThis.muxjs?.Transmuxer;
+  if (!Transmuxer) return null;
+  const tm = new Transmuxer();
+  let init = null;
+  const frags = [];
+  tm.on('data', (s) => {
+    if (!s.data?.length) return;
+    init ||= s.initSegment;
+    frags.push(s.data);
+  });
+  for (const seg of segments) {
+    tm.push(new Uint8Array(await seg.arrayBuffer()));
+    tm.flush();
+  }
+  if (!init || !frags.length) return null;
+  return new Blob(flattenFragmentedMp4(init, frags), { type: 'video/mp4' });
+}
+
 async function run(jobId, url) {
   const send = (m) => {
     const job = jobs.get(jobId);
@@ -158,8 +184,20 @@ async function run(jobId, url) {
     await Promise.all(Array.from({ length: Math.min(6, total) }, worker));
 
     parts.push(...results);
-    const ext = pl.map ? 'mp4' : 'ts';
-    const blob = new Blob(parts, { type: ext === 'mp4' ? 'video/mp4' : 'video/mp2t' });
+    let ext = pl.map ? 'mp4' : 'ts';
+    let blob = new Blob(parts, { type: ext === 'mp4' ? 'video/mp4' : 'video/mp2t' });
+    if (ext === 'ts') {
+      // MPEG-TS plays poorly outside VLC-like players: repackage it as MP4 (no re-encoding).
+      // If that is not possible (other codecs, broken stream), the .ts file is still saved as before.
+      const mp4 = await tsToMp4(results).catch((e) => {
+        console.warn('[VictorLoad] could not repackage TS as MP4; saving the raw .ts', e);
+        return null;
+      });
+      if (mp4) {
+        blob = mp4;
+        ext = 'mp4';
+      }
+    }
     const blobUrl = URL.createObjectURL(blob);
     blobUrls.set(jobId, blobUrl);
     send({ type: 'hls-done', blobUrl, ext, first });

@@ -4,6 +4,16 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.2]
+
+### Added
+
+- The save location is now a folder template in Settings with the placeholders `{site}`, `{date}`, `{year}` and `{month}` (for example `Videos/{site}/{year}-{month}/`). Leave it empty to save straight into the Downloads folder. The default is still `VictorLoad/{site}/`, and anyone who had turned off "One folder per site" keeps saving into Downloads.
+
+### Fixed
+
+- HLS videos are saved as a real `.mp4` instead of a `.ts` file that many players (Windows Films & TV, phones, browsers) cannot open. The segments are repackaged without re-encoding, so it is fast and lossless, and the file is a standard MP4 with the real duration and a keyframe index, so it can be seeked. Streams that cannot be repackaged are still saved as `.ts`.
+
 ## [1.0.1]
 
 ### Added
@@ -26,6 +36,7 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 Initial public release.
 
-[Unreleased]: https://github.com/Victor-Go/VictorLoad/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/Victor-Go/VictorLoad/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/Victor-Go/VictorLoad/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Victor-Go/VictorLoad/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Victor-Go/VictorLoad/releases/tag/v1.0.0

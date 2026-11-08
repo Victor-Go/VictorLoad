@@ -8,6 +8,8 @@ import {
   classifyImages,
   isMainVideo,
   formatName,
+  expandSavePath,
+  mergeSettings,
   keyHash,
   downloadedKeySet,
   historyThumb,
@@ -844,6 +846,7 @@ function renderSettings() {
   });
   for (const sync of dropdowns) sync();
   renderNamePreview();
+  renderPathPreview();
   const box = $('#remList');
   box.innerHTML = '';
   let n = 0;
@@ -1031,6 +1034,35 @@ nameInput.addEventListener('input', () => {
   saveSettings();
   renderNamePreview();
 });
+/* Save path template: presets, placeholder chips and a live example */
+
+const pathInput = $('#savePath');
+
+function renderPathPreview() {
+  const dir = expandSavePath(pathInput.value, { site: 'example.com' });
+  $('#pathPreview').textContent = `${T('下载')}/${dir}${T('你好世界')}.mp4`;
+}
+
+function setSavePath(v) {
+  pathInput.value = v;
+  S.savePath = v;
+  saveSettings();
+  renderPathPreview();
+}
+
+pathInput.addEventListener('input', () => {
+  S.savePath = pathInput.value;
+  saveSettings();
+  renderPathPreview();
+});
+$$('[data-path-preset]').forEach((b) => b.addEventListener('click', () => setSavePath(b.dataset.pathPreset)));
+$$('[data-path-token]').forEach((b) =>
+  b.addEventListener('click', () => {
+    const s = pathInput.selectionStart ?? pathInput.value.length;
+    const e = pathInput.selectionEnd ?? s;
+    setSavePath(pathInput.value.slice(0, s) + b.dataset.pathToken + pathInput.value.slice(e));
+  }),
+);
 $$('[data-preset]').forEach((b) => b.addEventListener('click', () => setNameFormat(b.dataset.preset)));
 $$('[data-token]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -1161,7 +1193,7 @@ chrome.storage.onChanged.addListener((ch, area) => {
 // ---- Startup ----
 (async function init() {
   const st = await chrome.storage.local.get(['settings', 'remembered', 'history']);
-  S = { ...DEFAULTS, ...(st.settings || {}) };
+  S = mergeSettings(st.settings);
   remembered = st.remembered || {};
   setHistory(st.history);
   setLang(S.uiLang);

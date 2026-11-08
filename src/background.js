@@ -1,7 +1,8 @@
 // Background service worker: collects what the pages report, sniffs network requests,
 // runs the downloads and keeps the history.
 import {
-  DEFAULTS,
+  mergeSettings,
+  expandSavePath,
   HISTORY_LIMIT,
   normKey,
   pageKeyOf,
@@ -70,7 +71,7 @@ function tabOf(id) {
 
 async function getSettings() {
   const { settings = {} } = await chrome.storage.local.get('settings');
-  return { ...DEFAULTS, ...settings };
+  return mergeSettings(settings);
 }
 
 // Nobody is listening when the side panel is closed, and sendMessage rejects then: that is normal
@@ -671,7 +672,7 @@ function ownVideoName(item, q) {
 }
 
 async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
-  const dir = S.subfolder ? `VictorLoad/${safeName(host) || 'misc'}/` : '';
+  const dir = expandSavePath(S.savePath, { site: host });
   const id = item.id;
 
   if (item.kind === 'image') {

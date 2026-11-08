@@ -139,3 +139,95 @@ test('unacknowledged results stop retrying but remain available to the backgroun
   );
   env.message({ type: 'revoke', jobId: 'lost' });
 });
+
+test('TS segments are repackaged as an MP4 when mux.js is available, and fall back to .ts otherwise', async () => {
+  const { readFileSync } = await import('node:fs');
+  const seg = readFileSync(new URL('./fixtures/h264-segment.ts', import.meta.url));
+  const lib = readFileSync(new URL('../vendor/mux-mp4.min.js', import.meta.url), 'utf8');
+  const p = 'https://cdn.example/ts.m3u8';
+  const playlist = '#EXTM3U\n#EXTINF:4,\na.ts\n#EXTINF:4,\nb.ts\n#EXT-X-ENDLIST';
+  const fixtures = { [p]: playlist, 'https://cdn.example/a.ts': seg, 'https://cdn.example/b.ts': seg };
+  const boxes = (u8) => {
+    const out = [];
+    for (let i = 0; i + 8 <= u8.length; ) {
+      const size = new DataView(u8.buffer, u8.byteOffset + i).getUint32(0);
+      out.push(String.fromCharCode(...u8.subarray(i + 4, i + 8)));
+      if (size < 8) break;
+      i += size;
+    }
+    return out;
+  };
+
+  const findBox = (u, type, within) => {
+    const d = new DataView(u.buffer, u.byteOffset);
+    const walk = (s, e) => {
+      for (let p = s; p + 8 <= e; ) {
+        const size = d.getUint32(p);
+        const t = String.fromCharCode(...u.subarray(p + 4, p + 8));
+        if (t === type) return { start: p + 8, end: p + size };
+        // descend into the containers that hold what the test looks for
+        if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(t)) {
+          const r = walk(p + 8, p + size);
+          if (r) return r;
+        }
+        if (size < 8) break;
+        p += size;
+      }
+      return null;
+    };
+    return within ? walk(within.start, within.end) : walk(0, u.length);
+  };
+
+  globalThis.window = globalThis;
+  new Function(lib).call(globalThis);
+  try {
+    const env = await offscreen(fixtures);
+    env.message({ type: 'hls-start', jobId: 'mux', url: p });
+    await env.wait(() => env.sent.some((m) => m.type === 'hls-done'));
+    const done = env.sent.find((m) => m.type === 'hls-done');
+    assert.equal(done.ext, 'mp4');
+    const mp4 = new Uint8Array(await (await nativeFetch(done.blobUrl)).arrayBuffer());
+    // A standard MP4 (not fragmented): the index comes first, then one mdat, no moof
+    assert.deepEqual(boxes(mp4), ['ftyp', 'moov', 'mdat']);
+    assert.ok(mp4.length > seg.length && mp4.length < seg.length * 5, `unexpected size ${mp4.length}`);
+    // mvhd carries the real duration: two copies of the segment, about 2 x 10.4 s of video
+    const moov = findBox(mp4, 'moov');
+    const mvhd = findBox(mp4, 'mvhd', moov);
+    const dv = new DataView(mp4.buffer, mp4.byteOffset);
+    const seconds = dv.getUint32(mvhd.start + 16) / dv.getUint32(mvhd.start + 12); // version 0: timescale, duration
+    assert.ok(seconds > 15 && seconds < 40, `duration ${seconds}s`);
+    assert.ok(findBox(mp4, 'stss', moov), 'keyframes are indexed so that seeking lands on them');
+    env.message({ type: 'revoke', jobId: 'mux' });
+  } finally {
+    delete globalThis.muxjs;
+    delete globalThis.window;
+  }
+
+  const env = await offscreen(fixtures);
+  env.message({ type: 'hls-start', jobId: 'raw', url: p });
+  await env.wait(() => env.sent.some((m) => m.type === 'hls-done'));
+  assert.equal(env.sent.find((m) => m.type === 'hls-done').ext, 'ts');
+  env.message({ type: 'revoke', jobId: 'raw' });
+});
+
+test('a stream mux.js cannot repackage is still saved as .ts', async (t) => {
+  const { readFileSync } = await import('node:fs');
+  const lib = readFileSync(new URL('../vendor/mux-mp4.min.js', import.meta.url), 'utf8');
+  t.mock.method(console, 'warn', () => {});
+  globalThis.window = globalThis;
+  new Function(lib).call(globalThis);
+  try {
+    const p = 'https://cdn.example/junk.m3u8';
+    const env = await offscreen({
+      [p]: '#EXTM3U\n#EXTINF:4,\nj.ts\n#EXT-X-ENDLIST',
+      'https://cdn.example/j.ts': new Uint8Array(1880).fill(7),
+    });
+    env.message({ type: 'hls-start', jobId: 'junk', url: p });
+    await env.wait(() => env.sent.some((m) => m.type === 'hls-done'));
+    assert.equal(env.sent.find((m) => m.type === 'hls-done').ext, 'ts');
+    env.message({ type: 'revoke', jobId: 'junk' });
+  } finally {
+    delete globalThis.muxjs;
+    delete globalThis.window;
+  }
+});

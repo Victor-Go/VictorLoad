@@ -25,8 +25,10 @@ src/mse.js            YouTube segment capture, gap fill, MP4 assembly (MAIN worl
 src/h264.js           optional "H.264 only" switch for YouTube (MAIN world)
 src/sites.js          Bilibili / YouTube extractors      src/hlsparse.js m3u8 parser
 src/offscreen.*       HLS segment merging                src/sidepanel.*  UI
+src/mp4flat.js        fragmented MP4 -> standard MP4
 src/shared.js         main-content rules, helpers        src/i18n.js      English strings
 vendor/hls.min.js     hls.js, for HLS previews           dev/             manual test pages
+vendor/mux-mp4.min.js mux.js, repackages HLS .ts as .mp4
 test/, scripts/       unit tests, build and release tooling
 ```
 
