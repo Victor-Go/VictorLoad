@@ -1,6 +1,6 @@
 {
   "name": "victorload",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Chrome extension that sniffs videos and images on any page and downloads them.",
   "license": "MIT",

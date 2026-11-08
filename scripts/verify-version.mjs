@@ -1,4 +1,4 @@
-// Usage: node scripts/verify-version.mjs v1.0.0
+// Usage: node scripts/verify-version.mjs v1.0.1
 // Fails when a release tag does not match manifest.json / package.json, so a mistagged release never ships.
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';

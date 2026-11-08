@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseM3U8 } from '../src/hlsparse.js';
 
 globalThis.document = { documentElement: {} }; // i18n.js touches document only when switching language
-const { T, setLang, EN } = await import('../src/i18n.js');
+const { T, setLang, detectLang, EN } = await import('../src/i18n.js');
 
 test('parseM3U8: master playlist lists the variants with resolution', () => {
   const m = parseM3U8(
@@ -69,4 +69,17 @@ test('i18n: messages with a variable part are translated by pattern', () => {
 
 test('i18n: the example text for file names is neutral', () => {
   assert.equal(EN['你好世界'], 'Hello World');
+});
+
+test('i18n: auto detection maps browser languages to the right script', () => {
+  const cases = {
+    'zh-CN': 'zh', 'zh-SG': 'zh', 'zh-Hans': 'zh', 'zh-Hans-SG': 'zh', zh: 'zh', 'zh-MY': 'zh',
+    'zh-TW': 'zh-TW', 'zh-HK': 'zh-TW', 'zh-MO': 'zh-TW', 'zh-Hant': 'zh-TW', 'zh-Hant-HK': 'zh-TW',
+    'fr-CA': 'fr', fr: 'fr', 'en-US': 'en', de: 'en', ja: 'en',
+  };
+  for (const [ui, want] of Object.entries(cases)) {
+    globalThis.chrome = { i18n: { getUILanguage: () => ui } };
+    assert.equal(detectLang(), want, ui);
+  }
+  delete globalThis.chrome;
 });

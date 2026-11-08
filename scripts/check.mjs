@@ -84,7 +84,17 @@ for (const p of referenced.filter(Boolean))
 
 // src/ has no package.json "type", so Node detects the ES module syntax and prints a harmless warning
 process.removeAllListeners('warning');
-const { EN } = await import(pathToFileURL(join(ROOT, 'src/i18n.js')).href);
+const { EN, TABLES } = await import(pathToFileURL(join(ROOT, 'src/i18n.js')).href);
+// Every extra language must translate exactly the same strings as English
+for (const [code, [table, patterns]] of Object.entries(TABLES)) {
+  for (const k of Object.keys(EN)) if (table[k] === undefined) fail(`${code} is missing a translation for: "${k}"`);
+  for (const k of Object.keys(table)) if (EN[k] === undefined) fail(`${code} has a string that English does not have: "${k}"`);
+  for (const k of Object.keys(EN)) {
+    const ph = (x) => (x.match(/\{\w+\}/g) || []).sort().join();
+    if (table[k] !== undefined && ph(table[k]) !== ph(k)) fail(`${code} changes the {placeholders} of: "${k}"`);
+  }
+  if (patterns.length !== TABLES.en[1].length) fail(`${code} has a different number of message patterns than English`);
+}
 const norm = (s) => s.replace(/\s+/g, ' ').trim();
 const EN_RE = [/^不支持的加密方式：/, /^\d+p · 视频\+音频分开$/];
 const known = (s) => EN[s] !== undefined || EN_RE.some((re) => re.test(s));

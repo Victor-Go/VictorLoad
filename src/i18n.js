@@ -1,5 +1,8 @@
-// Minimal i18n. Chinese is the default language: the Chinese UI text is the key, English is looked up in EN.
+// Minimal i18n. The language defaults to "auto" (browser language, English fallback). Chinese UI text is the source key, English is looked up in EN.
 // Static HTML is translated by walking the DOM (applyDom); dynamic text goes through T().
+
+import { FR, FR_RE } from './i18n-fr.js';
+import { ZH_TW, ZH_TW_RE } from './i18n-zh-tw.js';
 
 export const EN = {
   '请先播放视频，几秒后会出现可下载的画质。': 'Play the video first. Quality options will appear after a few seconds.',
@@ -37,12 +40,14 @@ export const EN = {
   '全部下载 (0)': 'Download all (0)', // initial text, replaced as soon as the list renders
   '下载选中 (0)': 'Download selected (0)',
   '自动': 'Auto',
-  '中文': '中文', // language names stay in their own language
+  '简体中文': '简体中文', // language names stay in their own language
+  '繁體中文': '繁體中文',
   '显示方式': 'Open as',
   '侧边栏': 'Side panel',
   '浮窗': 'Popup',
   '侧边栏会一直停靠并实时更新；浮窗点击图标弹出，点到别处会自动关闭。切换后立即生效。':
     'The side panel stays open as you browse. The popup opens below the toolbar icon and closes when you click elsewhere. Changes apply immediately.',
+  '已切换，点击工具栏图标即可使用。': 'Display mode changed. Click the toolbar icon to use it.',
   '下面的标准决定「主要」列表里显示什么，其余内容仍可在「全部」中找到。':
     'Choose what appears under "Main". Other items are still available under "All".',
   '主要图片': 'Main images',
@@ -109,6 +114,7 @@ export const EN = {
   '选择': 'Select',
   '分辨率': 'Resolution',
   '预览': 'Preview',
+  '无法预览，仍可下载': 'No preview available, but you can still download it',
   '预览加载失败（仍可尝试下载）': 'Preview failed to load (you can still try downloading)',
   '（无标题）': '(untitled)',
   '播放视频几秒后，这里会出现可下载的清晰度':
@@ -177,10 +183,14 @@ export const EN = {
 };
 
 // Messages with a variable part
-const EN_RE = [
+export const EN_RE = [
   [/^不支持的加密方式：(.*)$/, 'Unsupported encryption: $1'],
   [/^(\d+p) · 视频\+音频分开$/, '$1 · video + audio as separate files'],
 ];
+
+// Language -> [translation table, pattern table]. Simplified Chinese ('zh') is the source text itself.
+export const TABLES = { en: [EN, EN_RE], fr: [FR, FR_RE], 'zh-TW': [ZH_TW, ZH_TW_RE] };
+const HTML_LANG = { zh: 'zh-CN', 'zh-TW': 'zh-TW', en: 'en', fr: 'fr' };
 
 let lang = 'zh';
 
@@ -190,21 +200,29 @@ export function detectLang() {
       navigator.language ||
       'en',
   ).toLowerCase();
-  return ui.startsWith('zh') ? 'zh' : 'en';
+  if (ui.startsWith('zh')) {
+    // Traditional script: Taiwan, Hong Kong, Macau or an explicit Hant tag. Simplified: Mainland China, Singapore, Malaysia, Hans.
+    if (/hans/.test(ui)) return 'zh';
+    if (/hant|[-_](tw|hk|mo)/.test(ui)) return 'zh-TW';
+    return 'zh';
+  }
+  if (ui.startsWith('fr')) return 'fr';
+  return 'en'; // every other browser language falls back to English
 }
 
-/** pref: 'auto' | 'zh' | 'en' */
+/** pref: 'auto' | 'zh' | 'zh-TW' | 'en' | 'fr'; anything else behaves like 'auto' */
 export function setLang(pref) {
-  lang = pref === 'zh' || pref === 'en' ? pref : detectLang();
-  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  lang = HTML_LANG[pref] ? pref : detectLang();
+  document.documentElement.lang = HTML_LANG[lang];
   return lang;
 }
 export const getLang = () => lang;
 
 function lookup(zh) {
-  if (lang !== 'en') return zh;
-  if (EN[zh] !== undefined) return EN[zh];
-  for (const [re, rep] of EN_RE) if (re.test(zh)) return zh.replace(re, rep);
+  const t = TABLES[lang];
+  if (!t) return zh;
+  if (t[0][zh] !== undefined) return t[0][zh];
+  for (const [re, rep] of t[1]) if (re.test(zh)) return zh.replace(re, rep);
   return zh;
 }
 
@@ -231,7 +249,7 @@ export function applyDom(root = document.body) {
       n.__zh = k;
       n.__ws = [n.nodeValue.match(/^\s*/)[0], n.nodeValue.match(/\s*$/)[0]];
     }
-    n.nodeValue = n.__ws[0] + (lang === 'en' ? lookup(n.__zh) : n.__zh) + n.__ws[1];
+    n.nodeValue = n.__ws[0] + lookup(n.__zh) + n.__ws[1];
   }
   for (const el of root.querySelectorAll('*')) {
     for (const a of ATTRS) {
@@ -242,7 +260,7 @@ export function applyDom(root = document.body) {
         if (!/[一-龥]/.test(v)) continue;
         el.__zhAttr[a] = v;
       }
-      el.setAttribute(a, lang === 'en' ? lookup(el.__zhAttr[a]) : el.__zhAttr[a]);
+      el.setAttribute(a, lookup(el.__zhAttr[a]));
     }
   }
 }

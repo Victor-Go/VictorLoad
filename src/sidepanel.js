@@ -15,7 +15,8 @@ import {
 import { videoNotice, siteErrorText, historyNoticeText } from './notices.js';
 
 // Opened as a toolbar popup (see syncUiMode in background.js): use a fixed-size layout
-if (new URLSearchParams(location.search).has('popup')) document.documentElement.classList.add('popup');
+const IS_POPUP = new URLSearchParams(location.search).has('popup');
+if (IS_POPUP) document.documentElement.classList.add('popup');
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -41,6 +42,7 @@ const sel = new Map(); // id -> manual selection
 const touched = new Set(); // ids whose selection the user changed
 const pickedQuality = new Map(); // id -> quality index
 const dims = {}; // id -> size measured from the preview image
+const broken = new Set(); // image ids whose preview failed to load: kept out of "Main"
 const dl = new Map(); // id -> {state,pct,msg}
 const cards = new Map(); // `${kind}:${id}` -> card
 
@@ -90,6 +92,7 @@ function remSets() {
 function derive() {
   const rem = remSets();
   imgMain = classifyImages(state.images, S, rem.image, dims);
+  for (const id of broken) imgMain.delete(id);
   vidMain = new Set(state.videos.filter((v) => isMainVideo(v, S, rem.video)).map((v) => v.id));
 }
 
@@ -610,6 +613,17 @@ function makeImageCard(first) {
   prev.prepend(img);
   const card = { el, item: first, thumb: null, destroy() {} };
 
+  // A preview the panel cannot load (for example the site only serves the image to its own pages)
+  img.addEventListener('error', () => {
+    const it = card.item;
+    prev.dataset.msg = T('无法预览，仍可下载');
+    prev.classList.add('failed');
+    // If the page measured the image it is fine and only our preview fails: keep it in "Main".
+    // Otherwise it is broken and stays under "All" only.
+    if (it.w || dims[it.id] || broken.has(it.id)) return;
+    broken.add(it.id);
+    render();
+  });
   img.addEventListener('load', () => {
     const it = card.item;
     if (!it.w && img.naturalWidth && !dims[it.id]) {
@@ -635,6 +649,7 @@ function makeImageCard(first) {
     if (card.thumb !== it.thumb) {
       img.src = it.thumb;
       card.thumb = it.thumb;
+      prev.classList.remove('failed');
     }
     const w = it.w || dims[it.id]?.w;
     const hh = it.h || dims[it.id]?.h;
@@ -827,6 +842,7 @@ function renderSettings() {
     else if (i.type === 'radio') i.checked = S[k] === i.value;
     else i.value = S[k];
   });
+  for (const sync of dropdowns) sync();
   renderNamePreview();
   const box = $('#remList');
   box.innerHTML = '';
@@ -860,18 +876,44 @@ $$('[data-s]').forEach((i) =>
     if (i.type === 'radio') {
       if (!i.checked) return;
       S[k] = i.value;
-    } else if (i.type === 'text') S[k] = i.value;
+    } else if (i.type === 'text' || i.tagName === 'SELECT') S[k] = i.value;
     else S[k] = i.type === 'checkbox' ? i.checked : Math.max(0, +i.value || 0);
+    if (k === 'uiMode') {
+      switchUiMode();
+      return;
+    }
     saveSettings();
     if (k === 'uiLang') applyLanguage();
     else render();
   }),
 );
+
+/** Apply a display mode change right away: save, let the background rewire the toolbar button, then open the other UI */
+async function switchUiMode() {
+  clearTimeout(saveTimer);
+  await storeLocal({ settings: S }, 'settings');
+  try {
+    await chrome.runtime.sendMessage({ type: 'sync-ui-mode' });
+    const { id: windowId } = await chrome.windows.getCurrent();
+    if (S.uiMode === 'popup' && !IS_POPUP) {
+      await chrome.action.openPopup({ windowId });
+      window.close();
+    } else if (S.uiMode !== 'popup' && IS_POPUP) {
+      await chrome.sidePanel.open({ windowId });
+      window.close();
+    }
+  } catch (e) {
+    // Older browsers cannot open the other UI from script; the toolbar button already uses the new mode
+    console.warn('[VictorLoad] could not open the new display mode', e);
+    toast(T('已切换，点击工具栏图标即可使用。'));
+  }
+}
 /* Language */
 
 function applyLanguage() {
   setLang(S.uiLang);
   applyDom();
+  for (const sync of dropdowns) sync();
   // Cards carry translated tooltips created at build time: rebuild them
   for (const c of cards.values()) {
     c.destroy();
@@ -884,6 +926,88 @@ function applyLanguage() {
   if (!$('#viewSettings').classList.contains('hidden')) renderSettings();
   render();
 }
+
+/* Drop-down list styled like the rest of the UI. The native <select> stays (hidden) as the source of truth. */
+const dropdowns = [];
+function enhanceSelect(native) {
+  const wrap = h('div', 'dd');
+  const btn = h('button', 'dd-btn');
+  btn.type = 'button';
+  btn.setAttribute('aria-haspopup', 'listbox');
+  btn.setAttribute('aria-label', native.getAttribute('aria-label') || '');
+  const label = h('span', 'dd-label');
+  btn.append(label, h('span', 'dd-chev'));
+  const list = h('div', 'dd-list hidden');
+  list.setAttribute('role', 'listbox');
+  native.before(wrap);
+  wrap.append(btn, list, native);
+  native.classList.add('dd-native');
+  native.tabIndex = -1;
+  let active = -1;
+
+  const setActive = (i) => {
+    const els = [...list.children];
+    active = Math.max(0, Math.min(els.length - 1, i));
+    els.forEach((e, n) => e.classList.toggle('active', n === active));
+    els[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  const close = () => {
+    list.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    sync();
+    list.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    setActive([...native.options].findIndex((o) => o.value === native.value));
+  };
+  const choose = (value) => {
+    close();
+    btn.focus();
+    if (native.value === value) return;
+    native.value = value;
+    native.dispatchEvent(new Event('change'));
+    sync();
+  };
+  // Rebuild labels and options from the native select (applyDom translates its option texts in place)
+  function sync() {
+    label.textContent = native.selectedOptions[0]?.textContent.trim() || '';
+    list.replaceChildren(
+      ...[...native.options].map((o) => {
+        const it = h('div', 'dd-item' + (o.value === native.value ? ' on' : ''));
+        it.setAttribute('role', 'option');
+        it.setAttribute('aria-selected', String(o.value === native.value));
+        it.textContent = o.textContent.trim();
+        it.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus on the button
+        it.addEventListener('click', () => choose(o.value));
+        return it;
+      }),
+    );
+  }
+
+  btn.addEventListener('click', () => (list.classList.contains('hidden') ? open() : close()));
+  btn.addEventListener('keydown', (e) => {
+    const isOpen = !list.classList.contains('hidden');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen) open();
+      else setActive(active + (e.key === 'ArrowDown' ? 1 : -1));
+    } else if (isOpen && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      choose(native.options[active]?.value ?? native.value);
+    } else if (isOpen && (e.key === 'Escape' || e.key === 'Tab')) {
+      if (e.key === 'Escape') e.preventDefault();
+      close();
+    }
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!wrap.contains(e.target)) close();
+  });
+  window.addEventListener('blur', close);
+  dropdowns.push(sync);
+  sync();
+}
+$$('select[data-dd]').forEach(enhanceSelect);
 
 /* File name template: presets, placeholder chips and a live example */
 

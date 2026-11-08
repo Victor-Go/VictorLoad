@@ -32,7 +32,7 @@ test/, scripts/       unit tests, build and release tooling
 
 ## Conventions
 
-- Chinese is the default language. User-facing text is written in **Chinese** in the source and translated into English through `src/i18n.js` (the Chinese string is the key); the interface starts in Chinese and the user can switch in Settings. `npm run check` fails when a string has no English translation.
+- Chinese is the source language. User-facing text is written in **Chinese** in the source and translated into English through `src/i18n.js` (the Chinese string is the key); the interface language defaults to `auto` (follows the browser; unsupported languages fall back to English) and the user can pin a language in Settings. Translations live in `src/i18n.js` (English), `src/i18n-fr.js` (French) and `src/i18n-zh-tw.js` (Traditional Chinese). To add a language, create a `src/i18n-xx.js` with the same keys, register it in `TABLES` and `HTML_LANG` in `src/i18n.js`, handle it in `detectLang`, add an `<option>` to the language `<select>` in `src/sidepanel.html`, and add `_locales/<code>/messages.json`. `npm run check` fails when a string has no translation in any language, or when a translation changes the `{placeholders}`.
 - Code comments are in **English**.
 - Formatting is set by `.editorconfig` and `.prettierrc.json` (LF line endings, 2 spaces, single quotes, 120 columns). Prettier is not a project dependency; to format run `npx prettier --write "src/**/*.js" "scripts/*.mjs" "test/**/*.mjs"`.
 - Chinese text uses full-width punctuation (，。：；？！「」（）).

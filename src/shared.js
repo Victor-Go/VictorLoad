@@ -17,8 +17,8 @@ export const DEFAULTS = {
   ytH264: true, // prefer H.264+AAC on YouTube so captured audio/video can be muxed into one mp4 (1080p max)
   // File name template. Placeholders: {tab} {name} {duration} {resolution}
   nameFormat: '{tab}',
-  // UI language: 'zh' (default), 'en', or 'auto' to follow the browser
-  uiLang: 'zh',
+  // UI language: 'auto' (default, follows the browser; Chinese browsers get Chinese, everything else English), 'zh' or 'en'
+  uiLang: 'auto',
   // Where the UI opens: 'sidepanel' (docked, live) or 'popup' (floating, closes on blur)
   uiMode: 'sidepanel',
   // UI memory

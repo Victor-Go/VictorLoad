@@ -89,5 +89,5 @@ test('isMainVideo: resolution and duration thresholds', () => {
 });
 
 test('the interface defaults to Chinese', () => {
-  assert.equal(DEFAULTS.uiLang, 'zh');
+  assert.equal(DEFAULTS.uiLang, 'auto');
 });

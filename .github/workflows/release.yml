@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to (re)build and publish, e.g. v1.0.0'
+        description: 'Existing tag to (re)build and publish, e.g. v1.0.1'
         required: true
         type: string
 

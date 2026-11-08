@@ -47,7 +47,7 @@ The list is live: new items appear as they load and disappear when they leave th
 - A history list, and a small green check on items you have already downloaded.
 - File names can be built from `{tab}`, `{name}`, `{duration}` and `{resolution}`.
 - You can change what counts as a "main" image or video.
-- Side panel or popup, English or 中文, light and dark.
+- Side panel or popup, English, Français, 简体中文 or 繁體中文, light and dark.
 
 ## Install
 
@@ -89,13 +89,15 @@ Download the new zip and unzip it over the same folder, replacing the old files.
    - **Edge**: the panel opens in Edge's sidebar on the right.
    - If your browser has no side panel, VictorLoad opens as a popup instead. You can also choose side panel or popup yourself in Settings.
 3. **Video** tab: every video on the page is listed. Choose a quality in the dropdown and press **Download**. To get several at once, tick their boxes and press **Download selected**, or press **Download all**.
-4. **Images** tab: "Main" shows images that match your filters or previous selections; "All" shows every detected image. Tick the ones you want and press **Download selected**.
+4. **Images** tab: "Main" shows images that match your filters or previous selections (images that fail to load are left out); "All" shows every detected image. Tick the ones you want and press **Download selected**.
 5. On YouTube, play the video for a few seconds first. The dropdown shows how much is buffered. At 100% the button says **Download**; below that it says **Auto download**, which buffers the rest and then saves. Pick the quality in YouTube's own player before you start.
 6. Files go to `Downloads/VictorLoad/<site>/`. YouTube files are saved by the page, straight into your Downloads folder.
 
 The icons at the top of the panel scan the page again, open download history and open Settings (filters, file name format, language).
 
-The interface is in Chinese by default. Switch to English in Settings → Language (or choose "Auto" to follow the browser).
+The interface language is **Auto** by default and follows the browser: Simplified Chinese (mainland China, Singapore, `zh-Hans`), Traditional Chinese (Taiwan, Hong Kong, Macau, `zh-Hant`) and French are used when the browser matches, and every other language falls back to English. To pick one yourself, open Settings → Language and choose from the list.
+
+Settings → Display mode switches between the side panel and the popup. The change applies immediately: the current view closes and the other one opens (older Chrome versions may need one click on the toolbar icon).
 
 ## FAQ
 
@@ -123,4 +125,4 @@ VictorLoad is a tool; what you do with it is up to you. Download only what you h
 
 - [How each site works, limits and tips](docs/SITES.en.md)
 - [Privacy policy](PRIVACY.en.md) · [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [Developing and testing](docs/DEVELOPMENT.md) · [Releasing](docs/RELEASING.md)
+- [Developing and testing](docs/DEVELOPMENT.md) · [Releasing](docs/RELEASING.md) · [Changelog](CHANGELOG.md)

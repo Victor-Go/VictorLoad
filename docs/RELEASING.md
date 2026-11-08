@@ -21,6 +21,10 @@ Pushes to `main` without a version change, and pull requests, only run checks an
 - You can push a version tag yourself instead of relying on version detection. The tag must match `manifest.json` and `package.json`.
 - To rebuild a published version, open **Actions → Release → Run workflow** and enter its existing tag. This replaces the ZIP and checksum files on that release.
 
+## Changelog
+
+Add an entry to `CHANGELOG.md` in the same commit as the version bump. Move anything under "Unreleased" into the new version heading.
+
 ## Package contents
 
 Only `manifest.json`, `_locales/`, `icons/`, `rules/`, `src/` and `vendor/` are included (see `scripts/build.mjs`). Tests, `dev/` pages, scripts, docs and CI files are excluded. The ZIP is reproducible: the same sources produce the same bytes.

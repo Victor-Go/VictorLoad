@@ -294,6 +294,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg.type) {
       case 'scan':
         return onScan(msg, sender);
+      case 'sync-ui-mode':
+        await syncUiMode();
+        return { ok: true };
       case 'getState': {
         const t = tabOf(msg.tabId);
         if (!t.pageUrl) {
@@ -884,7 +887,10 @@ chrome.runtime.onStartup.addListener(syncUiMode);
 syncUiMode();
 
 // ---- YouTube: optional "H.264 only" script registration ----
-async function syncH264() {
+// Runs are queued: install, startup and a settings change can fire together and would register the script twice
+let h264Queue = Promise.resolve();
+const syncH264 = () => (h264Queue = h264Queue.then(syncH264Now));
+async function syncH264Now() {
   try {
     const S = await getSettings();
     const reg = await chrome.scripting.getRegisteredContentScripts({ ids: ['vl-h264'] });
