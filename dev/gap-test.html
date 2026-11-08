@@ -1,0 +1,188 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>gap detection / auto fill test</title>
+<body>
+  <!-- Usage: serve the repo root, open this page (add ?mode=stuck for the unfillable case), read window.__result -->
+  <script src="../src/mse.js"></script>
+  <script>
+    window.__result = null;
+    const mode = new URLSearchParams(location.search).get('mode') || 'fill';
+    const posted = [];
+    window.addEventListener('message', (e) => e.data && e.data.__victorload && posted.push(e.data));
+    history.replaceState(null, '', '?v=test123&mode=' + mode);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const lastStatus = () => posted.filter((p) => p.kind === 'mse-status').pop()?.status;
+    const cmd = (c) => window.postMessage({ __victorloadCmd: 1, cmd: c }, '*');
+
+    async function record(stream, mime, ms) {
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const done = new Promise((r) => (rec.onstop = r));
+      rec.start(300);
+      await sleep(ms);
+      rec.stop();
+      await done;
+      return new Uint8Array(await new Blob(chunks).arrayBuffer());
+    }
+
+    function splitUnits(u) {
+      const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+      const bs = [];
+      let p = 0;
+      while (p + 8 <= u.length) {
+        const size = dv.getUint32(p);
+        if (size < 8 || p + size > u.length) break;
+        bs.push({ type: String.fromCharCode(u[p + 4], u[p + 5], u[p + 6], u[p + 7]), start: p, end: p + size });
+        p += size;
+      }
+      const init = u.slice(0, bs.find((b) => b.type === 'moov').end);
+      const frags = [];
+      for (let i = 0; i < bs.length; i++) {
+        if (bs[i].type === 'moof') frags.push(u.slice(bs[i].start, (bs[i + 1] && bs[i + 1].type === 'mdat' ? bs[i + 1] : bs[i]).end));
+      }
+      return { init, frags };
+    }
+
+    async function openSb(mime) {
+      const ms = new MediaSource();
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(ms);
+      await new Promise((r) => ms.addEventListener('sourceopen', r, { once: true }));
+      return ms.addSourceBuffer(mime);
+    }
+    const append = async (sb, bytes) => {
+      try {
+        sb.appendBuffer(bytes);
+      } catch (e) {}
+      await sleep(20);
+    };
+
+    async function run() {
+      const out = { mode };
+      // Record a real H.264 video track and AAC audio track (fMP4)
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const g = canvas.getContext('2d');
+      let n = 0;
+      const timer = setInterval(() => {
+        g.fillStyle = `hsl(${(n * 7) % 360},80%,50%)`;
+        g.fillRect(0, 0, 320, 240);
+        n++;
+      }, 33);
+      const ac = new AudioContext();
+      const osc = ac.createOscillator();
+      const dest = ac.createMediaStreamDestination();
+      osc.connect(dest);
+      osc.start();
+      const [vb, ab] = await Promise.all([
+        record(new MediaStream(canvas.captureStream(30).getVideoTracks()), 'video/mp4;codecs=avc1.42E01E', 6200),
+        record(dest.stream, 'audio/mp4;codecs=mp4a.40.2', 6200),
+      ]);
+      clearInterval(timer);
+      const V = splitUnits(vb);
+      const A = splitUnits(ab);
+      out.fragments = { video: V.frags.length, audio: A.frags.length };
+
+      // Fake main video element with a controllable playhead
+      const fv = document.createElement('video');
+      fv.className = 'html5-main-video';
+      const DUR = 6;
+      Object.defineProperty(fv, 'duration', { get: () => DUR });
+      let ct = 1.0;
+      const missing = [];
+      let sbA = null;
+      let seeks = [];
+      Object.defineProperty(fv, 'currentTime', {
+        get: () => ct,
+        set: (x) => {
+          ct = x;
+          seeks.push(+x.toFixed(2));
+          // Simulated player: after a seek into a hole it fetches the missing fragments (fill mode only)
+          if (mode === 'fill') {
+            (async () => {
+              await sleep(300);
+              while (missing.length) {
+                await append(sbA, missing.shift());
+                await sleep(200);
+              }
+            })();
+          }
+        },
+      });
+      fv.play = () => Promise.resolve();
+      fv.pause = () => {};
+      document.body.append(fv);
+
+      const sbV = await openSb('video/mp4; codecs="avc1.42E01E"');
+      sbA = await openSb('audio/mp4; codecs="mp4a.40.2"');
+      await append(sbV, V.init);
+      await append(sbA, A.init);
+      for (const f of V.frags) await append(sbV, f);
+      // Drop three consecutive audio fragments from the middle to create a hole
+      const lo = Math.floor(A.frags.length / 2) - 1;
+      A.frags.forEach((f, i) => {
+        if (i >= lo && i < lo + 3) missing.push(f);
+        else append(sbA, f);
+      });
+      await sleep(1500);
+      const s1 = lastStatus();
+      out.before = { audio: s1.audio.map((a) => ({ cov: +a.cov.toFixed(2), holes: a.holes, gaps: a.gaps })), video: s1.video.map((v) => ({ cov: +v.cov.toFixed(2), holes: v.holes, gaps: v.gaps })) };
+
+      // Auto download: fill the holes, then save (or report "stuck" when they cannot be filled)
+      fv.muted = false;
+      fv.playbackRate = 1;
+      let blob = null;
+      const origCOU = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (b) => ((blob = b), origCOU(b));
+      HTMLAnchorElement.prototype.click = function () {};
+      const s0 = lastStatus();
+      const ids = { vgid: s0.video[0].gid, agid: s0.audio[0].gid };
+      const jobMsgs = (job) => posted.filter((p) => p.kind === 'mse-save' && p.jobId === job);
+      const finished = (job) => jobMsgs(job).some((p) => ['done', 'stuck', 'error', 'cancelled'].includes(p.state));
+      const waitJob = async (job) => {
+        for (let i = 0; i < 100 && !finished(job); i++) await sleep(400);
+        return jobMsgs(job);
+      };
+      const play = async () => {
+        if (!blob) return null;
+        const v2 = document.createElement('video');
+        v2.muted = true;
+        v2.src = origCOU(blob);
+        return new Promise((resolve) => {
+          v2.onerror = () => resolve({ error: v2.error && v2.error.message });
+          v2.onloadedmetadata = () => resolve({ duration: v2.duration, size: v2.videoWidth + 'x' + v2.videoHeight });
+          setTimeout(() => resolve({ timeout: true }), 5000);
+        });
+      };
+
+      const t0 = Date.now();
+      window.postMessage({ __victorloadCmd: 1, cmd: 'autosave', jobId: 'auto1', ...ids, name: 'auto' }, '*');
+      const m1 = await waitJob('auto1');
+      const last1 = m1[m1.length - 1];
+      out.auto = {
+        seconds: +((Date.now() - t0) / 1000).toFixed(1),
+        states: [...new Set(m1.map((p) => p.state))],
+        bufferingPcts: m1.filter((p) => p.state === 'buffering').map((p) => p.pct).slice(0, 6),
+        final: last1.state,
+        holes: last1.holes,
+        gaps: last1.gaps,
+        blobSaved: !!blob,
+      };
+      out.autoPlay = await play();
+      out.restored = { currentTime: ct, rate: fv.playbackRate, muted: fv.muted };
+
+      if (last1.state === 'stuck') {
+        // The user confirms "download anyway": plain save of what is captured
+        blob = null;
+        window.postMessage({ __victorloadCmd: 1, cmd: 'save', jobId: 'force1', ...ids, name: 'force' }, '*');
+        const m2 = await waitJob('force1');
+        out.force = { states: m2.map((p) => p.state), blobSaved: !!blob };
+        out.forcePlay = await play();
+      }
+      return out;
+    }
+    run().then((r) => (window.__result = r)).catch((e) => (window.__result = { fatal: String((e && e.stack) || e) }));
+  </script>
+</body>

@@ -1,0 +1,6 @@
+# Keep line endings as LF in the repository, whatever the OS of the contributor
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary

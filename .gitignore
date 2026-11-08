@@ -1,0 +1,13 @@
+# Build output
+dist/
+*.zip
+
+# Chrome adds this folder when an unpacked extension is loaded from here
+_metadata/
+
+# Dependencies / editors / OS
+node_modules/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

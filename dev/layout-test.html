@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>VictorLoad responsive grid checks</title>
+<style>
+  body {
+    margin: 20px;
+    font:
+      14px/1.5 system-ui,
+      sans-serif;
+  }
+  .stage {
+    max-width: 100%;
+    max-height: 400px;
+    overflow: auto;
+    border: 1px solid #aaa;
+  }
+  iframe {
+    display: block;
+    border: 0;
+    height: 880px;
+  }
+  pre {
+    white-space: pre-wrap;
+  }
+</style>
+<h1>Responsive grid checks</h1>
+<p>Checks 1–8 columns, uniform cards, mixed aspect ratios, scroll overflow and the footer.</p>
+<div class="stage"><iframe id="panel" title="Side panel test fixture"></iframe></div>
+<pre id="result">Running…</pre>
+<script type="module">
+  const frame = document.querySelector('#panel');
+  const report = document.querySelector('#result');
+  const results = [];
+  const assert = (ok, message) => {
+    if (!ok) throw new Error(message);
+  };
+  const revision = Date.now();
+
+  async function load(kind, count = 64) {
+    frame.src = `preview.html?stress=${count}&tab=${kind}&lang=zh&rev=${revision}`;
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const list = frame.contentDocument?.querySelector('#list');
+      if (list?.children.length === count && list.children[0].classList.contains(kind === 'image' ? 'img' : 'vid'))
+        return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('Preview did not render');
+  }
+
+  function check(kind, width, expectedColumns, height = 880) {
+    frame.style.width = width + 'px';
+    frame.style.height = height + 'px';
+    const doc = frame.contentDocument;
+    const list = doc.querySelector('#list');
+    const style = frame.contentWindow.getComputedStyle(list);
+    const columns = style.gridTemplateColumns.trim().split(/\s+/).length;
+    const cards = [...list.children];
+    const rects = cards.map((el) => el.getBoundingClientRect());
+    const first = rects[0];
+    assert(columns === expectedColumns, `${kind} at ${width}: expected ${expectedColumns} columns, got ${columns}`);
+    assert(list.scrollWidth <= list.clientWidth, 'Horizontal list overflow');
+    assert(doc.body.scrollWidth <= width, 'Horizontal page overflow');
+    assert(doc.querySelector('.dock').getBoundingClientRect().bottom <= height + 1, 'Footer is outside viewport');
+    for (let i = 0; i < cards.length; i++) {
+      const rect = rects[i];
+      const preview = cards[i].querySelector('.preview').getBoundingClientRect();
+      assert(
+        Math.abs(rect.width - first.width) < 1 && Math.abs(rect.height - first.height) < 1,
+        'Unequal card dimensions',
+      );
+      assert(preview.height > 60, 'Preview collapsed to a strip');
+      assert(
+        Math.abs(preview.width / preview.height - (kind === 'image' ? 1 : 16 / 9)) < 0.03,
+        'Incorrect preview aspect ratio',
+      );
+      if (i >= columns) assert(rect.top >= rects[i - columns].bottom, 'Rows overlap');
+    }
+    if (cards.length > 8) assert(list.scrollHeight > list.clientHeight, 'Many cards were squeezed into the viewport');
+    if (cards.length === 1) assert(first.width < 500, 'A single card stretched across the whole wide window');
+    results.push({
+      kind,
+      width,
+      height,
+      columns,
+      count: cards.length,
+      card: [Math.round(first.width), Math.round(first.height)],
+      pass: true,
+    });
+    report.textContent = JSON.stringify({ status: 'running', checks: results }, null, 2);
+  }
+
+  try {
+    await load('image');
+    for (const [width, columns] of [
+      [320, 1],
+      [382, 2],
+      [570, 3],
+      [740, 4],
+      [910, 5],
+      [1080, 6],
+      [1250, 7],
+      [1420, 8],
+      [3000, 8],
+    ])
+      check('image', width, columns);
+    check('image', 382, 2, 360);
+    await load('video');
+    for (const [width, columns] of [
+      [320, 1],
+      [620, 2],
+      [900, 3],
+      [1180, 4],
+      [1460, 5],
+      [1740, 6],
+      [2020, 7],
+      [2300, 8],
+      [3000, 8],
+    ])
+      check('video', width, columns);
+    check('video', 382, 1, 360);
+    await load('image', 1);
+    check('image', 3000, 8);
+    await load('video', 1);
+    check('video', 3000, 8);
+    report.textContent = JSON.stringify({ status: 'passed', total: results.length, checks: results }, null, 2);
+  } catch (error) {
+    report.textContent = JSON.stringify({ status: 'failed', error: error.message, checks: results }, null, 2);
+  }
+</script>

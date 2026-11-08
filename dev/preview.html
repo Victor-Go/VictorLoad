@@ -1,0 +1,153 @@
+<!doctype html>
+<!-- Dev preview: renders the side panel in a normal web page with mock data (no extension needed). See README. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VictorLoad preview</title>
+    <link rel="stylesheet" href="../src/sidepanel.css" />
+  </head>
+  <body>
+    <script>
+      const svg = (a, b, label) =>
+        'data:image/svg+xml;utf8,' +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><text x="320" y="190" font-size="38" fill="white" text-anchor="middle" font-family="sans-serif">${label}</text></svg>`,
+        );
+      const q = (l, h, size) => ({ label: l, height: h, url: 'https://cdn.example.com/' + l + '.mp4', ext: 'mp4', type: 'direct', size });
+      const mockState = {
+        tabId: 1,
+        pageUrl: 'https://www.example.com/watch?v=1',
+        title: 'Demo',
+        host: 'example.com',
+        loading: false,
+        videos: [
+          { id: 'v1', kind: 'video', title: '【4K】城市夜景延时摄影 - 东京的夜晚', thumb: svg('#6366f1', '#ec4899', '1080p'), w: 1920, h: 1080, duration: 372, siteMain: true, sig: 'a', keys: ['v:done'], qualities: [q('1080P', 1080, 88e6), q('720P', 720, 41e6), q('480P', 480, 19e6)] },
+          { id: 'v2', kind: 'video', title: 'Short clip from the timeline (HLS)', thumb: svg('#0ea5e9', '#22c55e', 'HLS'), w: 1280, h: 720, duration: 48, sig: 'b', keys: [], qualities: [{ label: '720p', height: 720, url: 'https://x/a.m3u8', type: 'hls', ext: 'ts' }, { label: '360p', height: 360, url: 'https://x/b.m3u8', type: 'hls', ext: 'ts' }] },
+          // Captured YouTube streams: partial (with holes) and complete
+          { id: 'yt1', kind: 'video', title: '10 sec 2D Test animation', thumb: svg('#0ea5e9', '#6366f1', 'yt 42%'), duration: 632, siteMain: true, posterOnly: true, keys: [], capture: { cov: 0.42, filling: false, fillResult: '', hasAudio: true }, qualities: [{ label: '720p H.264', codec: 'H.264', height: 720, type: 'capture', vgid: 'g1', agid: 'g2', ext: 'mp4', cov: 0.42, holes: 2, gaps: [[35.2, 80], [200, 400]], size: 17e6 }, { label: '480p H.264', codec: 'H.264', height: 480, type: 'capture', vgid: 'g3', agid: 'g2', ext: 'mp4', cov: 0.9, holes: 1, gaps: [[10, 30]], size: 9e6 }] },
+          { id: 'yt2', kind: 'video', title: '10 sec 2D Test animation (complete)', thumb: svg('#22c55e', '#0ea5e9', 'yt 100%'), duration: 10, siteMain: true, posterOnly: true, keys: [], capture: { cov: 1, filling: false, fillResult: '', hasAudio: true }, qualities: [{ label: '720p H.264', codec: 'H.264', height: 720, type: 'capture', vgid: 'g1', agid: 'g2', ext: 'mp4', cov: 1, holes: 0, gaps: [], size: 40.9e6 }] },
+          { id: 'v3', kind: 'video', title: '小广告 （很短）', thumb: svg('#f59e0b', '#ef4444', 'ad'), w: 320, h: 180, duration: 5, sig: 'c', keys: [], qualities: [q('MP4', 0, 900e3)] },
+        ],
+        images: [
+          ...[['#6366f1', '#06b6d4', 1600, 1200], ['#f43f5e', '#f59e0b', 2000, 1333], ['#10b981', '#3b82f6', 1080, 1350], ['#a855f7', '#ec4899', 1600, 900]].map((c, i) => ({ id: 'i' + i, kind: 'image', url: 'https://x/' + i + '.jpg', thumb: svg(c[0], c[1], c[2] + '×' + c[3]), w: c[2], h: c[3], rw: 300, rh: 200, sig: 'main', keys: i === 1 ? ['img:done'] : [], size: 340e3 + i * 90e3 })),
+          { id: 'i9', kind: 'image', url: 'https://x/small.png', thumb: svg('#64748b', '#94a3b8', '64×64'), w: 64, h: 64, rw: 64, rh: 64, sig: 'icon', keys: [], size: 3e3 },
+        ],
+      };
+      mockState.images[1].keys = ['img:done'];
+      mockState.videos[0].keys = ['v:done'];
+
+      // ?demo=youtube|x|bilibili renders a showcase state (used for the README screenshots, see dev/showcase.html).
+      // The thumbnails are abstract drawings made here, not frames of real videos.
+      const params = new URLSearchParams(location.search);
+      const revision = params.get('rev');
+      if (revision) document.querySelector('link[rel="stylesheet"]').href = '../src/sidepanel.css?preview=' + encodeURIComponent(revision);
+      const demo = params.get('demo');
+      if (demo) {
+        const zh = params.get('lang') === 'zh';
+        const scene = (kind) => {
+          const sky = { aurora: ['#06142e', '#0d4a5c'], city: ['#3b1c6e', '#f2764a'], sea: ['#ffb347', '#ff6b6b'] }[kind];
+          const body =
+            kind === 'aurora'
+              ? '<path d="M0 150 C120 60 220 190 340 90 S560 70 640 130 L640 230 C520 170 420 240 300 170 S110 220 0 200Z" fill="#33f2b3" opacity=".55"/><path d="M0 190 C150 120 260 230 380 150 S560 140 640 190 L640 240 C500 200 400 260 280 210 S100 250 0 240Z" fill="#7b6bff" opacity=".5"/><path d="M0 360 L0 280 L90 230 L170 290 L260 210 L360 300 L450 240 L540 300 L640 250 L640 360Z" fill="#04101f"/>'
+              : kind === 'city'
+                ? '<circle cx="470" cy="120" r="60" fill="#ffd38a" opacity=".9"/>' + [0, 70, 130, 200, 270, 340, 410, 480, 550].map((x, i) => `<rect x="${x}" y="${190 - (i * 37) % 90}" width="62" height="${170 + (i * 37) % 90}" fill="#1a1033"/>`).join('')
+                : '<circle cx="320" cy="215" r="80" fill="#fff3b0"/><path d="M0 240 Q80 215 160 240 T320 240 T480 240 T640 240 V360 H0Z" fill="#1b6ca8"/><path d="M0 275 Q80 250 160 275 T320 275 T480 275 T640 275 V360 H0Z" fill="#134b78"/>';
+          return (
+            'data:image/svg+xml;utf8,' +
+            encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset="1" stop-color="${sky[1]}"/></linearGradient></defs><rect width="640" height="360" fill="url(#s)"/>${body}</svg>`,
+            )
+          );
+        };
+        const cap = (h, cov, size) => ({ label: h + 'p H.264', codec: 'H.264', height: h, type: 'capture', vgid: 'g' + h, agid: 'ga', ext: 'mp4', cov, holes: cov < 1 ? 1 : 0, gaps: [], size });
+        const direct = (label, h, size) => ({ label, height: h, url: 'https://cdn.example/' + label + '.mp4', ext: 'mp4', type: 'direct', size });
+        mockState.images = [];
+        if (demo === 'youtube') {
+          mockState.host = 'youtube.com';
+          mockState.pageUrl = 'https://www.youtube.com/watch?v=demo';
+          mockState.videos = [{ id: 'yt:demo', kind: 'video', source: 'site', title: zh ? '北极光延时摄影 4K' : 'Northern Lights Time-lapse 4K', thumb: scene('aurora'), duration: 312, siteMain: true, posterOnly: true, keys: [], capture: { cov: 1, ...(new URLSearchParams(location.search).has('warn') ? { full: true, rejected: 2 } : {}) }, qualities: [cap(1080, 1, 182e6), cap(720, 0.62, 96e6), cap(480, 0.3, 52e6)] }];
+        } else if (demo === 'x') {
+          mockState.host = 'x.com';
+          mockState.pageUrl = 'https://x.com/demo/status/1';
+          mockState.videos = [
+            { id: 'tw1', kind: 'video', source: 'site', title: zh ? '@natureclips 城市日落航拍' : '@natureclips Sunset flight over the city', thumb: scene('city'), duration: 48, siteMain: true, keys: [], qualities: [direct('1080p', 1080, 38e6), direct('720p', 720, 19e6), direct('480p', 480, 8e6)] },
+            { id: 'tw2', kind: 'video', source: 'site', title: zh ? '@natureclips 海上日出' : '@natureclips Sunrise at sea', thumb: scene('sea'), duration: 21, siteMain: true, keys: [], qualities: [direct('720p', 720, 12e6), direct('360p', 360, 4e6)] },
+          ];
+        } else {
+          mockState.host = 'bilibili.com';
+          mockState.pageUrl = 'https://www.bilibili.com/video/BVdemo';
+          mockState.videos = [{ id: 'bili:demo', kind: 'video', source: 'site', title: zh ? '【4K】海上日出延时' : '[4K] Sunrise over the sea, time-lapse', thumb: scene('sea'), duration: 186, siteMain: true, keys: [], qualities: [direct('1080P60', 1080, 96e6), direct('1080P', 1080, 71e6), direct('720P', 720, 40e6), direct('480P', 480, 22e6), direct('360P', 360, 12e6)] }];
+        }
+      }
+
+      // ?demo=youtube&phase=waiting previews the initial capture warm-up (including stale diagnostics).
+      if (demo === 'youtube' && params.get('phase') === 'waiting') {
+        const item = mockState.videos[0];
+        item.qualities = [];
+        delete item.capture;
+        item.waitingForCapture = true;
+        item.errorDetail = "Unexpected token '<', '<html><head>' is not valid JSON";
+      }
+      if (demo === 'youtube' && params.get('phase')?.startsWith('cancel-')) {
+        mockState.videos[0].qualities[0].cov = 0.42;
+        mockState.videos[0].qualities[0].holes = 1;
+        mockState.videos[0].capture.cov = 0.42;
+      }
+
+      // Large, mixed-aspect fixtures for responsive grid checks (both tabs, 1–8 columns).
+      if (params.has('stress')) {
+        const count = Math.min(200, Math.max(1, Number(params.get('stress')) || 64));
+        const sizes = [[12000, 1], [1, 12000], [1600, 900], [675, 1200], [3000, 3000], [680, 340], [300, 900], [2400, 400]];
+        const thumbnail = (i, w, h) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 640 360"><rect width="640" height="360" fill="hsl(${i * 37 % 360} 60% 48%)"/><circle cx="320" cy="180" r="100" fill="white" opacity=".2"/><text x="320" y="195" text-anchor="middle" fill="white" font-size="36" font-family="sans-serif">${w} × ${h}</text></svg>`
+        );
+        mockState.images = Array.from({ length: count }, (_, i) => {
+          const [w, h] = sizes[i % sizes.length];
+          return { id: 'stress-image-' + i, kind: 'image', url: 'https://cdn.example/image-' + i + '.png', thumb: thumbnail(i, w, h), w, h, rw: 300, rh: 300, siteMain: true, sig: 'stress', keys: [] };
+        });
+        mockState.videos = Array.from({ length: count }, (_, i) => {
+          const [w, h] = sizes[i % sizes.length];
+          return { id: 'stress-video-' + i, kind: 'video', title: i % 3 ? 'Video #' + (i + 1) : '很长的视频标题 / A long video title '.repeat(8), thumb: thumbnail(i, w, h), w, h, duration: 90, siteMain: true, sig: 'stress', keys: [], qualities: [q('1080p', 1080, 15e6)], ...(i % 5 === 0 ? { error: 'HTTP 403' } : {}) };
+        });
+      }
+
+      const mem = {
+        // ?tab=image opens the image tab, ?lang=en|zh forces the UI language
+        settings: {
+          ...(new URLSearchParams(location.search).get('tab') === 'image' ? { tab: 'image' } : {}),
+          ...(new URLSearchParams(location.search).get('lang') ? { uiLang: new URLSearchParams(location.search).get('lang') } : {}),
+        },
+        history: [
+          { id: 'h1', time: Date.now() - 36e5, kind: 'video', name: '城市夜景延时摄影 [1080P].mp4', title: 'x', host: 'bilibili.com', q: '1080P', thumb: svg('#6366f1', '#ec4899', ''), keys: ['v:done'], pageUrl: 'https://x' },
+          { id: 'h2', time: Date.now() - 864e5, kind: 'image', name: 'IMG_2031.jpg', title: 'x', host: 'x.com', q: '2000×1333', thumb: svg('#f43f5e', '#f59e0b', ''), keys: ['img:done'], pageUrl: 'https://x' },
+        ],
+        remembered: { 'example.com': { image: ['figure.gallery<div.wrap<main'], video: [] } },
+      };
+      window.__listeners = [];
+      window.chrome = {
+        storage: { local: { get: async () => mem, set: async (o) => Object.assign(mem, o) }, session: { get: async () => ({}), remove: async () => {} }, onChanged: { addListener() {} } },
+        tabs: { query: async () => [{ id: 1, url: mockState.pageUrl, favIconUrl: params.has('favicon') ? new URL(params.get('favicon') || '../icons/icon32.png', location.href).href : '' }], onActivated: { addListener() {} }, onUpdated: { addListener() {} }, create() {} },
+        runtime: {
+          sendMessage: async (m) => (m.type === 'getState' ? mockState :
+            m.type === 'capture-ctl' && params.get('phase') === 'cancel-failed' ? { error: 'page disconnected' } : { ok: true }),
+          onMessage: { addListener: (fn) => window.__listeners.push(fn) },
+        },
+      };
+      // __notice() simulates the background reporting that the history could not be kept in full
+      window.__notice = (notice = { kind: 'trimmed', dropped: 500 }) => window.__listeners.forEach((f) => f({ type: 'history-notice', notice }));
+      window.__push = (kind) => {
+        const n = mockState.videos.length + 1;
+        mockState.videos.push({ id: 'vn' + n, kind: 'video', title: '新嗅探到的视频 #' + n, thumb: svg('#14b8a6', '#6366f1', 'new'), w: 1280, h: 720, duration: 90, sig: 'n', keys: [], qualities: [q('720P', 720, 20e6)] });
+        window.__listeners.forEach((f) => f({ type: 'state', tabId: 1, state: JSON.parse(JSON.stringify(mockState)) }));
+      };
+      fetch('../src/sidepanel.html')
+        .then((r) => r.text())
+        .then((t) => {
+          const doc = new DOMParser().parseFromString(t, 'text/html');
+          document.body.innerHTML = doc.body.innerHTML.replace(/<script[\s\S]*?<\/script>/g, '');
+          import('../src/sidepanel.js' + (revision ? '?preview=' + encodeURIComponent(revision) : ''));
+        });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Three side-panel states next to each other (YouTube, X, Bilibili): the README screenshot.
+     Open /dev/showcase.html?lang=en or ?lang=zh. The stage is 1320x780; add &zoom=0.5 and use a
+     660x390 viewport on a 2x screen to capture it at full, crisp resolution. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VictorLoad showcase</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; overflow: hidden; background: #0a1a66; }
+      #stage { width: 1320px; height: 780px; transform-origin: 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; font: 600 15px/1.4 system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #fff; background: radial-gradient(circle at 0 0, #19d3f5 0, transparent 38%), radial-gradient(circle at 100% 100%, #e03cf0 0, transparent 36%), linear-gradient(135deg, #0a1a66, #3424c4 55%, #7a2bd6); }
+      h1 { margin: 0; font-size: 28px; letter-spacing: .2px; }
+      h1 span { color: #ffd60a; }
+      .row { display: flex; gap: 28px; }
+      figure { margin: 0; text-align: center; }
+      iframe { width: 400px; height: 560px; border: 0; border-radius: 16px; background: #f4f5f7; box-shadow: 0 18px 50px rgba(5, 10, 50, .55); display: block; }
+      figcaption { margin-top: 12px; opacity: .92; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <h1 id="title"></h1>
+      <div class="row">
+        <figure><iframe id="f1"></iframe><figcaption>YouTube</figcaption></figure>
+        <figure><iframe id="f2"></iframe><figcaption>X (Twitter)</figcaption></figure>
+        <figure><iframe id="f3"></iframe><figcaption>Bilibili</figcaption></figure>
+      </div>
+    </div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const lang = q.get('lang') === 'zh' ? 'zh' : 'en';
+      if (q.get('zoom')) document.getElementById('stage').style.transform = `scale(${q.get('zoom')})`;
+      document.documentElement.lang = lang;
+      document.getElementById('title').innerHTML = lang === 'zh' ? '<span>V</span>ictorLoad · 一键下载 YouTube、X、B 站视频' : '<span>V</span>ictorLoad · Download from YouTube, X and Bilibili';
+      // The side panel shows the site's own favicon next to the host name
+      const icons = { youtube: 'https://www.youtube.com/favicon.ico', x: 'https://abs.twimg.com/favicons/twitter.3.ico', bilibili: 'https://s1.hdslb.com/bfs/static/jinkela/long/images/favicon.ico' };
+      ['youtube', 'x', 'bilibili'].forEach((site, i) => (document.getElementById('f' + (i + 1)).src = `preview.html?demo=${site}&lang=${lang}&favicon=${encodeURIComponent(icons[site])}`));
+    </script>
+  </body>
+</html>

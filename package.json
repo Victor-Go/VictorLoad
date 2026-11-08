@@ -1,0 +1,22 @@
+{
+  "name": "victorload",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that sniffs videos and images on any page and downloads them.",
+  "license": "MIT",
+  "author": "Victor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Victor-Go/VictorLoad.git"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "build": "node scripts/build.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "bump": "node scripts/bump.mjs"
+  }
+}

@@ -1,0 +1,112 @@
+name: Release
+
+# Release triggers:
+#   - normal way: a push to main in which the "version" in manifest.json differs from before
+#                 (the tag vX.Y.Z is created for you)
+#   - also works: pushing a tag vX.Y.Z yourself
+#   - redo:       run this workflow manually with an existing tag
+on:
+  push:
+    branches: [main]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build and publish, e.g. v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  detect:
+    name: Did the version change?
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.v.outputs.release }}
+      tag: ${{ steps.v.outputs.tag }}
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work out the tag to release
+        id: v
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"; echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"; echo "ref=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"; echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"; echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            CUR=$(node -p "require('./manifest.json').version")
+            PREV=""
+            if [ -n "${BEFORE:-}" ] && ! [[ "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              PREV=$(git show "$BEFORE:manifest.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)
+            fi
+            echo "version now: $CUR, before: ${PREV:-<none>}"
+            if [ "$CUR" != "$PREV" ] && ! git rev-parse -q --verify "refs/tags/v$CUR" >/dev/null; then
+              echo "release=true" >> "$GITHUB_OUTPUT"; echo "tag=v$CUR" >> "$GITHUB_OUTPUT"; echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            else
+              echo "Version unchanged (or v$CUR already released): nothing to package."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  build:
+    name: Build and publish the GitHub release
+    needs: detect
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.detect.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: The tag must match manifest.json and package.json
+        run: node scripts/verify-version.mjs "$TAG"
+
+      - name: Static checks
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build the ZIP package
+        run: npm run build
+
+      - name: Package checksums
+        working-directory: dist
+        run: |
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create or update the GitHub release
+        run: |
+          NOTES=(--generate-notes)
+          if [ "$TAG" = "v1.0.0" ]; then
+            NOTES=(--notes "Initial public release of VictorLoad. See the [README](https://github.com/Victor-Go/VictorLoad#readme) for features, installation, and known issues.")
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists: replacing its files."
+            gh release upload "$TAG" dist/*.zip dist/SHA256SUMS.txt --clobber
+          else
+            # If the tag does not exist yet (version bump pushed to main), it is created at this commit
+            gh release create "$TAG" dist/*.zip dist/SHA256SUMS.txt \
+              --title "VictorLoad $TAG" "${NOTES[@]}" --target "${{ needs.detect.outputs.ref }}"
+          fi

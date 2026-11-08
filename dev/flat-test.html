@@ -1,0 +1,164 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>flat mp4 test</title>
+<body>
+  <script src="../src/mse.js"></script>
+  <script>
+    window.__result = null;
+    const posted = [];
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.__victorload) posted.push(e.data);
+    });
+    history.replaceState(null, '', '?v=test123');
+
+    async function record(stream, mime, ms) {
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const done = new Promise((r) => (rec.onstop = r));
+      rec.start(300);
+      await new Promise((r) => setTimeout(r, ms));
+      rec.stop();
+      await done;
+      return new Uint8Array(await new Blob(chunks).arrayBuffer());
+    }
+
+    function splitUnits(u) {
+      const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+      const bs = [];
+      let p = 0;
+      while (p + 8 <= u.length) {
+        const size = dv.getUint32(p);
+        const type = String.fromCharCode(u[p + 4], u[p + 5], u[p + 6], u[p + 7]);
+        if (size < 8 || p + size > u.length) break;
+        bs.push({ type, start: p, end: p + size });
+        p += size;
+      }
+      const init = u.slice(0, bs.find((b) => b.type === 'moov').end);
+      const frags = [];
+      for (let i = 0; i < bs.length; i++) {
+        if (bs[i].type === 'moof') {
+          const end = bs[i + 1] && bs[i + 1].type === 'mdat' ? bs[i + 1].end : bs[i].end;
+          frags.push(u.slice(bs[i].start, end));
+        }
+      }
+      return { init, frags, types: bs.map((b) => b.type).join(' ') };
+    }
+
+    // Split a byte stream into random-sized pieces, like a streaming fetch would deliver it.
+    function randomSplit(u) {
+      const out = [];
+      let p = 0;
+      while (p < u.length) {
+        const n = 200 + Math.floor(Math.random() * 3000);
+        out.push(u.slice(p, p + n));
+        p += n;
+      }
+      return out;
+    }
+
+    async function feed(mime, parts) {
+      // Use a real MediaSource; mse.js hooks appendBuffer and captures the data first
+      const ms = new MediaSource();
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(ms);
+      await new Promise((r) => ms.addEventListener('sourceopen', r, { once: true }));
+      const sb = ms.addSourceBuffer(mime);
+      for (const p of parts) {
+        try {
+          sb.appendBuffer(p);
+        } catch (e) {}
+        await new Promise((r) => setTimeout(r, 30));
+      }
+    }
+
+    async function run() {
+      const out = {};
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const g = canvas.getContext('2d');
+      let n = 0;
+      const timer = setInterval(() => {
+        g.fillStyle = `hsl(${(n * 7) % 360},80%,50%)`;
+        g.fillRect(0, 0, 320, 240);
+        g.fillStyle = '#fff';
+        g.fillRect((n * 9) % 300, 100, 40, 40);
+        n++;
+      }, 33);
+      const vstream = new MediaStream(canvas.captureStream(30).getVideoTracks());
+      const ac = new AudioContext();
+      const osc = ac.createOscillator();
+      const dest = ac.createMediaStreamDestination();
+      osc.connect(dest);
+      osc.start();
+      const [vbytes, abytes] = await Promise.all([
+        record(vstream, 'video/mp4;codecs=avc1.42E01E', 2500),
+        record(dest.stream, 'audio/mp4;codecs=mp4a.40.2', 2500),
+      ]);
+      clearInterval(timer);
+      const V = splitUnits(vbytes);
+      const A = splitUnits(abytes);
+      out.recorded = { v: vbytes.length, a: abytes.length, vTypes: V.types.slice(0, 80), aTypes: A.types.slice(0, 80), vFrags: V.frags.length, aFrags: A.frags.length };
+
+      await feed('video/mp4; codecs="avc1.42E01E"', randomSplit(vbytes));
+      await feed('audio/mp4; codecs="mp4a.40.2"', randomSplit(abytes));
+      await new Promise((r) => setTimeout(r, 1200));
+      const st = posted.filter((p) => p.kind === 'mse-status').pop().status;
+      out.status = st;
+
+      let blob = null;
+      const origCOU = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (b) => ((blob = b), origCOU(b));
+      HTMLAnchorElement.prototype.click = function () {};
+      window.postMessage({ __victorloadCmd: 1, cmd: 'save', jobId: 'j', vgid: st.video[0].gid, agid: st.audio[0].gid, name: 'flat' }, '*');
+      await new Promise((r) => setTimeout(r, 800));
+      out.saveMsgs = posted.filter((p) => p.kind === 'mse-save').map((p) => p.state + (p.error ? ':' + p.error : ''));
+      if (!blob) return out;
+      out.blobSize = blob.size;
+      window.__blob = blob;
+
+      const url = origCOU(blob);
+      const v = document.createElement('video');
+      v.muted = true;
+      v.src = url;
+      document.body.append(v);
+      out.play = await new Promise((resolve) => {
+        const r = {};
+        v.onerror = () => resolve({ error: v.error && v.error.message, code: v.error && v.error.code });
+        v.onloadedmetadata = async () => {
+          r.duration = v.duration;
+          r.size = v.videoWidth + 'x' + v.videoHeight;
+          try {
+            await v.play();
+          } catch (e) {
+            r.playErr = String(e);
+          }
+          setTimeout(() => {
+            const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : {};
+            r.currentTime = v.currentTime;
+            r.decodedFrames = q.totalVideoFrames;
+            r.audioBytes = v.webkitAudioDecodedByteCount;
+            r.videoBytes = v.webkitVideoDecodedByteCount;
+            resolve(r);
+          }, 1500);
+        };
+        setTimeout(() => resolve({ timeout: true, ...r }), 8000);
+      });
+      // Inspect the top-level structure of the output
+      const u = new Uint8Array(await blob.arrayBuffer());
+      const dv = new DataView(u.buffer);
+      const tops = [];
+      let p = 0;
+      while (p + 8 <= u.length) {
+        const size = dv.getUint32(p);
+        tops.push(String.fromCharCode(u[p + 4], u[p + 5], u[p + 6], u[p + 7]) + ':' + size);
+        if (size < 8) break;
+        p += size;
+      }
+      out.top = tops.join(' ');
+      return out;
+    }
+    run().then((r) => (window.__result = r)).catch((e) => (window.__result = { fatal: String(e && e.stack || e) }));
+  </script>
+</body>
