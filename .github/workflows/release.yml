@@ -98,10 +98,9 @@ jobs:
 
       - name: Create or update the GitHub release
         run: |
-          NOTES=(--generate-notes)
-          if [ "$TAG" = "v1.0.0" ]; then
-            NOTES=(--notes "Initial public release of VictorLoad. See the [README](https://github.com/Victor-Go/VictorLoad#readme) for features, installation, and known issues.")
-          fi
+          # Release notes come from the matching CHANGELOG.md section; without one, GitHub generates them
+          awk -v v="${TAG#v}" '/^## \[/ { on = index($0, "## [" v "]") == 1; next } /^\[[^]]+\]: / { on = 0 } on' CHANGELOG.md > notes.md
+          if grep -q '[^[:space:]]' notes.md; then NOTES=(--notes-file notes.md); else NOTES=(--generate-notes); fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists: replacing its files."
             gh release upload "$TAG" dist/*.zip dist/SHA256SUMS.txt --clobber
