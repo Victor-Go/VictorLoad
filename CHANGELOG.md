@@ -4,6 +4,17 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.3]
+
+### Fixed
+
+- Downloads no longer fail with "Invalid filename". Page titles are now cleaned up before they become file names: broken emoji, trailing dots or spaces, hidden control characters and Windows reserved names (such as `CON`) are fixed or removed.
+- Videos could be saved under the site's own random file name (for example `cMR4HzL7OBPZ6aZW.mp4`) instead of the page title. The chosen name is now enforced, and if the browser still rejects it, a simpler name is tried instead of failing.
+
+### Changed
+
+- Videos now default to the highest available quality. After you pick a quality, the next video uses the closest one to it.
+
 ## [1.0.2]
 
 ### Added

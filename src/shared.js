@@ -27,7 +27,8 @@ export const DEFAULTS = {
   tab: 'video',
   imgMode: 'main',
   vidMode: 'main',
-  prefHeight: 1080,
+  // Preferred video height. 0 = the highest available; once the user picks a quality, the closest one next time
+  prefHeight: 0,
 };
 
 /** Stored settings on top of the defaults; the old "one folder per site" switch becomes a save path */
@@ -35,6 +36,8 @@ export function mergeSettings(stored) {
   const st = { ...(stored || {}) };
   if (st.savePath === undefined && st.subfolder === false) st.savePath = '';
   delete st.subfolder;
+  // Older versions saved a default of 1080 that the user never chose
+  if (st.prefHeight === 1080 && !st.prefHeightUser) delete st.prefHeight;
   return { ...DEFAULTS, ...st };
 }
 
@@ -152,13 +155,25 @@ export function pageKeyOf(u) {
   }
 }
 
+const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
+
+/**
+ * Make a string safe as one Windows/Chrome file or folder name. Chrome's downloads API rejects
+ * the whole download ("Invalid filename") for illegal characters, lone surrogates (e.g. an emoji
+ * cut in half by truncation), trailing dots/spaces and reserved device names.
+ */
 export function safeName(s, max = 80) {
-  s = String(s || '')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/, '');
-  if (s.length > max) s = s.slice(0, max).trim();
+  const tidy = (x) =>
+    x
+      // lone surrogates, C0/C1 controls, bidi/zero-width marks, and characters Windows forbids
+      .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '')
+      .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[. ]+$/, '');
+  s = tidy(String(s || ''));
+  if (s.length > max) s = tidy(s.slice(0, max));
+  if (WIN_RESERVED.test(s)) s = '_' + s;
   return s;
 }
 
@@ -210,8 +225,8 @@ export function formatName(tpl, vars, max = 150) {
   const clean = (x) => safeName(x, 120);
   let s = String(tpl || '{tab}').replace(/\{(tab|name|duration|resolution)\}/g, (_, k) => clean(vars[k] || ''));
   s = s.replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, '');
-  s = safeName(s, max);
-  return s.replace(/^[\s._-]+|[\s._-]+$/g, '');
+  s = safeName(s, max).replace(/^[\s._-]+|[\s._-]+$/g, '');
+  return safeName(s, max); // re-run so a reserved device name (CON, NUL…) gets its "_" prefix back
 }
 
 export const PATH_TOKENS = ['{site}', '{date}', '{year}', '{month}'];

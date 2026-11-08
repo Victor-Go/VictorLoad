@@ -111,9 +111,19 @@ const isDone = (it) => (it.keys || []).some((k) => downKeys.has(keyHash(k)));
 
 function defaultQ(it) {
   const qs = it.qualities || [];
-  if (!qs.length || !S.prefHeight) return 0;
-  const i = qs.findIndex((q) => q.height && q.height <= S.prefHeight);
-  return i >= 0 ? i : 0;
+  // No preference yet: the tallest. Otherwise the height closest to the last one picked (the taller on a tie).
+  let best = 0;
+  let bestScore = null;
+  qs.forEach((q, i) => {
+    const h = q.height || 0;
+    if (!h) return;
+    const score = S.prefHeight ? [Math.abs(h - S.prefHeight), -h] : [-h, 0];
+    if (!bestScore || score[0] < bestScore[0] || (score[0] === bestScore[0] && score[1] < bestScore[1])) {
+      best = i;
+      bestScore = score;
+    }
+  });
+  return best;
 }
 const qIndex = (it) => Math.min(pickedQuality.get(it.id) ?? defaultQ(it), Math.max(0, (it.qualities?.length || 1) - 1));
 
@@ -458,7 +468,11 @@ function makeVideoCard(first) {
   });
   select.addEventListener('change', () => {
     pickedQuality.set(card.item.id, +select.value);
-    S.prefHeight = card.item.qualities[+select.value]?.height || S.prefHeight;
+    const ph = card.item.qualities[+select.value]?.height;
+    if (ph) {
+      S.prefHeight = ph;
+      S.prefHeightUser = true;
+    }
     saveSettings();
     refreshCards();
   });

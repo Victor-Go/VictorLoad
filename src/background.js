@@ -769,9 +769,50 @@ async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
   await startFile(q.url, `${dir}${base}.${q.ext || 'mp4'}`, id, record);
 }
 
+// Names we asked for, by download URL. Another extension (or the server's Content-Disposition) can rename
+// a download after we asked for a name, and then the file falls back to the URL's own name, e.g.
+// cMR4HzL7OBPZ6aZW.mp4 on X. onDeterminingFilename re-asserts ours.
+const expectedNames = new Map();
+
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const f = expectedNames.get(item.url) || expectedNames.get(item.finalUrl);
+  if (f) suggest({ filename: f, conflictAction: 'uniquify' });
+});
+
+/** Last resort for "Invalid filename": keep only letters, digits and basic punctuation, or fall back to a plain name */
+function fallbackFilename(filename, level) {
+  const i = filename.lastIndexOf('/');
+  const dir = filename.slice(0, i + 1);
+  const file = filename.slice(i + 1);
+  const dot = file.lastIndexOf('.');
+  const ext = dot > 0 ? file.slice(dot) : '';
+  const stem = (dot > 0 ? file.slice(0, dot) : file)
+    .replace(/[^\p{L}\p{N} ._()\-[\]]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return level === 1 && stem ? dir + stem + ext : dir + 'video-' + Date.now().toString(36) + ext;
+}
+
+/** chrome.downloads.download that survives an invalid file name by retrying with a simpler one */
+async function downloadNamed(url, filename) {
+  let name = filename;
+  for (let level = 0; ; level++) {
+    expectedNames.set(url, name);
+    try {
+      return await chrome.downloads.download({ url, filename: name, conflictAction: 'uniquify', saveAs: false });
+    } catch (e) {
+      expectedNames.delete(url);
+      if (level >= 2 || !/invalid filename/i.test(String(e?.message || e))) throw e;
+      console.warn('[VictorLoad] invalid file name, retrying with a simpler one:', name, e);
+      name = fallbackFilename(filename, level + 1);
+    }
+  }
+}
+
 async function startFile(url, filename, itemId, record) {
   console.info('[VictorLoad] download as', filename);
-  const dlId = await chrome.downloads.download({ url, filename, conflictAction: 'uniquify', saveAs: false });
+  const dlId = await downloadNamed(url, filename);
   pending[dlId] = { itemId, record, aux: !record };
   await chrome.storage.session.set({ pending });
   emit({ type: 'dl', id: itemId, state: 'start' });
@@ -786,6 +827,10 @@ async function onDownloadChanged(delta) {
   const st = delta.state.current;
   if (st !== 'complete' && st !== 'interrupted') return;
   delete pending[delta.id];
+  chrome.downloads
+    .search({ id: delta.id })
+    .then(([d]) => d && expectedNames.delete(d.url))
+    .catch(() => {});
   chrome.storage.session
     .set({ pending })
     .catch((e) => console.warn('[VictorLoad] could not save pending downloads', e));
@@ -1076,12 +1121,7 @@ async function onHlsDone(msg) {
     startingDownload = !existing;
     const dlId =
       existing?.id ??
-      (await chrome.downloads.download({
-        url: msg.blobUrl,
-        filename,
-        conflictAction: 'uniquify',
-        saveAs: false,
-      }));
+      (await downloadNamed(msg.blobUrl, filename));
     startingDownload = false;
     pending[dlId] = { itemId: j.itemId, record: j.record, jobId: msg.jobId };
     jobs.delete(msg.jobId);
