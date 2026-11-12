@@ -131,7 +131,10 @@ function visibleItems() {
   const kind = S.tab;
   const list = kind === 'video' ? state.videos : state.images;
   const mode = kind === 'video' ? S.vidMode : S.imgMode;
-  return mode === 'main' ? list.filter(isMain) : list;
+  // Newest discoveries first; items found together keep the page's own order (the sort is stable)
+  return (mode === 'main' ? list.filter(isMain) : [...list]).sort(
+    (a, b) => (seenAt.get(b.id) || 0) - (seenAt.get(a.id) || 0),
+  );
 }
 
 // ---- Notifications ----
@@ -168,11 +171,19 @@ function setBtn(btn, label, pct) {
 /* New-item detection: highlight / notify when something new is sniffed */
 let known = { tabId: null, v: new Set(), i: new Set() };
 const freshIds = new Set();
+const seenAt = new Map(); // id -> discovery batch number: the list shows the highest first
+let batchNo = 0;
 
 function applyState(s) {
   state = s;
   derive();
   const same = known.tabId === s.tabId;
+  if (!same || (!s.videos.length && !s.images.length)) seenAt.clear(); // another tab, or the page was reset
+  const found = [...s.videos, ...s.images].filter((x) => !seenAt.has(x.id));
+  if (found.length) {
+    batchNo++;
+    for (const x of found) seenAt.set(x.id, batchNo);
+  }
   const newV = s.videos.filter((x) => !known.v.has(x.id));
   const newI = s.images.filter((x) => !known.i.has(x.id) && imgMain.has(x.id));
   if (same) {
@@ -366,7 +377,8 @@ function makeVideoCard(first) {
   const el = h('div', 'card vid');
   el.innerHTML = `
     <div class="preview">
-      <span class="chipov tl tag"></span><span class="chipov tr dur"></span>
+      <div class="chiprow"><span class="chipov dur"></span><span class="chipov tag"></span></div>
+      <button class="xbtn" title="${T('排除（刷新页面后恢复）')}" aria-label="${T('排除（刷新页面后恢复）')}"></button>
       <input class="cb" type="checkbox" title="${T('选择')}" />
       <i class="done" title="${T('已下载')}"></i>
     </div>
@@ -394,7 +406,8 @@ function makeVideoCard(first) {
   const playBtn = h('button', 'play', '<i></i>');
   playBtn.title = T('预览');
   playBtn.setAttribute('aria-label', T('预览'));
-  prev.insertBefore(playBtn, $('.tag', prev));
+  prev.insertBefore(playBtn, $('.chiprow', prev));
+  $('.xbtn', el).addEventListener('click', () => excludeItems([card.item.id]));
 
   const prog = h('div', 'prog', '<i></i>');
   prog.style.display = 'none';
@@ -613,6 +626,7 @@ function makeImageCard(first) {
   el.innerHTML = `
     <div class="preview">
       <span class="chipov tl dim"></span><span class="chipov tr st"></span>
+      <button class="xbtn" title="${T('排除（刷新页面后恢复）')}" aria-label="${T('排除（刷新页面后恢复）')}"></button>
       <input class="cb" type="checkbox" title="${T('选择')}" />
       <i class="done" title="${T('已下载')}"></i>
     </div>`;
@@ -647,12 +661,16 @@ function makeImageCard(first) {
       render();
     }
   });
+  const xbtn = $('.xbtn', el);
+  xbtn.addEventListener('click', () => excludeItems([card.item.id]));
   el.addEventListener('click', (e) => {
-    if (e.target === cb) return;
+    if (e.target === cb || e.target === xbtn) return; // the X has its own handler
     cb.checked = !cb.checked;
     cb.dispatchEvent(new Event('change'));
   });
-  el.addEventListener('dblclick', () => window.open(card.item.url, '_blank'));
+  el.addEventListener('dblclick', (e) => {
+    if (e.target !== xbtn) window.open(card.item.url, '_blank');
+  });
   cb.addEventListener('change', () => {
     touched.add(card.item.id);
     sel.set(card.item.id, cb.checked);
@@ -684,6 +702,23 @@ function makeImageCard(first) {
     el.classList.toggle('is-done', isDone(it));
   };
   return card;
+}
+
+/** Drop cards from this page's list. The background remembers it until the page is reloaded. */
+async function excludeItems(ids) {
+  if (tabId == null || !ids.length) return;
+  for (const id of ids) {
+    sel.delete(id);
+    touched.delete(id);
+  }
+  try {
+    const s = await chrome.runtime.sendMessage({ type: 'exclude', tabId, ids });
+    if (s && s.error) throw new Error(s.error);
+    if (s) applyState(s);
+  } catch (e) {
+    console.warn('[VictorLoad] exclude failed', e);
+    toast(T('排除失败：') + String((e && e.message) || e));
+  }
 }
 
 // ---- Downloads ----

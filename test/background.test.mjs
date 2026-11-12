@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeChrome, createStorage } from './helpers/fake-chrome.mjs';
 
-const storage = createStorage({ local: { settings: { nameFormat: '{tab}' } } });
+const storage = createStorage({ local: { settings: { nameFormat: '{tab}', nameFormatV: 2 } } });
 const store = storage.store;
 const sent = []; // messages sent to extension pages / tabs
 const downloads = [];
@@ -174,4 +174,58 @@ test('cancel reports a disconnected page and rejects a missing acknowledgement',
 test('the service worker used no chrome API the test did not expect', () => {
   console.warn = originalConsoleWarn;
   assert.deepEqual(fake.unexpected, []);
+});
+
+test('{title} names an X video after its card, while {tab} keeps the page title', async () => {
+  const item = {
+    ...capItem('x'),
+    id: 'tw-vid:1',
+    title: '@eric 太粉了',
+    qualities: [{ label: '720p', height: 720, url: 'https://video.twimg.com/a.mp4', type: 'direct', ext: 'mp4' }],
+  };
+  store.local.settings.nameFormat = '{title}';
+  await call({ type: 'download', tabId: 5, entries: [{ item, q: 0 }] });
+  await tick();
+  assert.equal(downloads.at(-1).filename, 'VictorLoad/youtube.com/@eric 太粉了.mp4');
+  store.local.settings.nameFormat = '{tab}';
+  await call({ type: 'download', tabId: 5, entries: [{ item, q: 0 }] });
+  await tick();
+  assert.equal(downloads.at(-1).filename, 'VictorLoad/youtube.com/Photos.mp4');
+});
+
+test('excluded items disappear until the page is reloaded', async () => {
+  const sender = { tab: { id: 9 }, frameId: 0 };
+  const vid = (n) => ({
+    key: 'v' + n,
+    qualities: [{ label: '720p', height: 720, url: `https://example.com/${n}.mp4`, type: 'direct', ext: 'mp4' }],
+  });
+  const scan = () =>
+    call(
+      {
+        type: 'scan',
+        pageUrl: 'https://example.com/p',
+        title: 'P',
+        images: [],
+        videos: [vid(1), vid(2)],
+        site: [],
+        keys: [],
+      },
+      sender,
+    );
+  await scan();
+  let s = await call({ type: 'getState', tabId: 9 });
+  assert.deepEqual(s.videos.map((v) => v.id).sort(), ['v1', 'v2']);
+  s = await call({ type: 'exclude', tabId: 9, ids: ['v1'] });
+  assert.deepEqual(
+    s.videos.map((v) => v.id),
+    ['v2'],
+  );
+  await scan(); // the same item is sniffed again: still hidden
+  assert.deepEqual(
+    (await call({ type: 'getState', tabId: 9 })).videos.map((v) => v.id),
+    ['v2'],
+  );
+  await handlers['webNavigation.onCommitted'][0]({ tabId: 9, frameId: 0, url: 'https://example.com/p' }); // reload
+  await scan();
+  assert.deepEqual((await call({ type: 'getState', tabId: 9 })).videos.map((v) => v.id).sort(), ['v1', 'v2']);
 });

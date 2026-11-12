@@ -48,7 +48,7 @@ All thresholds are in Settings.
 
 ## File names
 
-Settings → **File name format**. `{tab}` is the tab's title as the browser shows it, `{name}` the media's own name (the video title on YouTube / X / Bilibili, the file name elsewhere), `{duration}` like `5m32s`, `{resolution}` like `1080p` (`1920x1080` for images). Same-name files get a number added.
+Settings → **File name format**. `{title}` is the title on the preview card (the tab title when there is none), `{tab}` is the tab's title as the browser shows it, `{name}` the media's own name (the video title on YouTube / X / Bilibili, the file name elsewhere), `{duration}` like `5m32s`, `{resolution}` like `1080p` (`1920x1080` for images). Same-name files get a number added.
 
 ## Limitations
 

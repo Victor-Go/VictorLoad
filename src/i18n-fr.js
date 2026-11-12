@@ -54,12 +54,15 @@ export const FR = {
   '最短时长': 'Durée min.',
   '秒': 's',
   '文件名格式': 'Format du nom de fichier',
+  '视频标题': 'Titre de la vidéo',
   '标签页名': 'Titre de l’onglet',
   '文件本身的名字': 'Nom d’origine du fichier',
-  '标签页名 + 分辨率': 'Titre de l’onglet + résolution',
+  '视频标题 + 分辨率': 'Titre de la vidéo + résolution',
+  '排除（刷新页面后恢复）': 'Exclure (revient au rechargement de la page)',
+  '排除失败：': 'Exclusion impossible : ',
   '插入：': 'Insérer :',
-  '{tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。':
-    '{tab} titre de l’onglet · {name} nom propre de la vidéo ou de l’image · {duration} durée (ex. 5m32s) · {resolution} résolution (ex. 1080p pour une vidéo, 1920x1080 pour une image). Les fichiers du même nom reçoivent automatiquement un numéro.',
+  '{title} 视频标题（预览卡片上显示的标题，没有则用标签页名） · {tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。':
+    '{title} titre de la vidéo (celui de la carte d’aperçu, sinon le titre de l’onglet) · {tab} titre de l’onglet · {name} nom propre de la vidéo ou de l’image · {duration} durée (ex. 5m32s) · {resolution} résolution (ex. 1080p pour une vidéo, 1920x1080 pour une image). Les fichiers du même nom reçoivent automatiquement un numéro.',
   '示例': 'Exemple',
   '下载': 'Télécharger',
   '记住我选的内容': 'Mémoriser mes sélections',

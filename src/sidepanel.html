@@ -136,20 +136,22 @@
           <h3>文件名格式</h3>
           <div class="namebox">
             <div class="presets">
+              <button class="chip2" data-preset="{title}">视频标题</button>
               <button class="chip2" data-preset="{tab}">标签页名</button>
               <button class="chip2" data-preset="{name}">文件本身的名字</button>
-              <button class="chip2" data-preset="{tab} [{resolution}]">标签页名 + 分辨率</button>
+              <button class="chip2" data-preset="{title} [{resolution}]">视频标题 + 分辨率</button>
             </div>
-            <input id="nameFormat" class="textinp" type="text" data-s="nameFormat" spellcheck="false" placeholder="{tab}" />
+            <input id="nameFormat" class="textinp" type="text" data-s="nameFormat" spellcheck="false" placeholder="{title}" />
             <div class="presets">
               <span class="hint">插入：</span>
+              <button class="chip2 mono" data-token="{title}">{title}</button>
               <button class="chip2 mono" data-token="{tab}">{tab}</button>
               <button class="chip2 mono" data-token="{name}">{name}</button>
               <button class="chip2 mono" data-token="{duration}">{duration}</button>
               <button class="chip2 mono" data-token="{resolution}">{resolution}</button>
             </div>
             <p class="hint">
-              {tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。
+              {title} 视频标题（预览卡片上显示的标题，没有则用标签页名） · {tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。
             </p>
             <div class="example"><span>示例</span><code id="namePreview"></code></div>
           </div>

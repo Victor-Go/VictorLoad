@@ -58,12 +58,15 @@ export const EN = {
   '最短时长': 'Min duration',
   '秒': 's',
   '文件名格式': 'File name format',
+  '视频标题': 'Video title',
   '标签页名': 'Tab title',
   '文件本身的名字': 'Original file name',
-  '标签页名 + 分辨率': 'Tab title + resolution',
+  '视频标题 + 分辨率': 'Video title + resolution',
+  '排除（刷新页面后恢复）': 'Exclude (comes back when the page is reloaded)',
+  '排除失败：': 'Could not exclude: ',
   '插入：': 'Insert:',
-  '{tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。':
-    "{tab} tab title · {name} the media's own name · {duration} duration (e.g. 5m32s) · {resolution} resolution (e.g. 1080p for video, 1920x1080 for images). Files with the same name get a number added automatically.",
+  '{title} 视频标题（预览卡片上显示的标题，没有则用标签页名） · {tab} 标签页名 · {name} 视频/图片本身的名字 · {duration} 时长（如 5m32s） · {resolution} 分辨率（视频如 1080p，图片如 1920x1080）。同名文件会自动加序号。':
+    "{title} video title (as shown on the preview card, else the tab title) · {tab} tab title · {name} the media's own name · {duration} duration (e.g. 5m32s) · {resolution} resolution (e.g. 1080p for video, 1920x1080 for images). Files with the same name get a number added automatically.",
   '示例': 'Example',
   '下载': 'Download',
   '记住我选的内容': 'Remember my selections',

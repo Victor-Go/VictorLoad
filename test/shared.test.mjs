@@ -126,3 +126,18 @@ test('mergeSettings: the old stored 1080 default becomes "highest", a user-picke
   assert.equal(mergeSettings({ prefHeight: 1080, prefHeightUser: true }).prefHeight, 1080);
   assert.equal(mergeSettings({ prefHeight: 720, prefHeightUser: true }).prefHeight, 720);
 });
+
+test('{title} is the card title, falling back to the tab title; {tab} stays the tab title', () => {
+  const v = { title: 'Card', tab: 'Home X' };
+  assert.equal(formatName('{title}', v), 'Card');
+  assert.equal(formatName('{tab}', v), 'Home X');
+  assert.equal(formatName('{title}', { tab: 'Home X' }), 'Home X');
+  assert.equal(formatName('', v), 'Card'); // empty template = the default
+});
+
+test('mergeSettings: the unstamped old default {tab} becomes {title}; a stamped {tab} is a real choice', () => {
+  assert.equal(mergeSettings({}).nameFormat, '{title}');
+  assert.equal(mergeSettings({ nameFormat: '{tab}' }).nameFormat, '{title}');
+  assert.equal(mergeSettings({ nameFormat: '{tab}', nameFormatV: 2 }).nameFormat, '{tab}');
+  assert.equal(mergeSettings({ nameFormat: '{name}' }).nameFormat, '{name}');
+});

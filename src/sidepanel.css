@@ -127,6 +127,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .chipov { position: absolute; z-index: 2; background: rgba(12, 13, 16, .66); color: #fff; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; backdrop-filter: blur(4px); }
 .chipov.tl { left: 8px; top: 8px; }
 .chipov.tr { right: 8px; top: 8px; }
+/* Video: duration and the HLS tag share the top-left corner */
+.chiprow { position: absolute; z-index: 2; left: 8px; top: 8px; display: flex; gap: 4px; pointer-events: none; }
+.chiprow .chipov { position: static; }
+/* Exclude (X): top-right, where the duration used to be */
+.xbtn { position: absolute; z-index: 4; right: 8px; top: 8px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: rgba(12, 13, 16, .66) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M3.2 3.2l5.6 5.6M8.8 3.2L3.2 8.8'/%3E%3C/svg%3E") center / 12px no-repeat; backdrop-filter: blur(4px); cursor: pointer; transition: background-color .12s; }
+.xbtn:hover { background-color: rgba(220, 38, 38, .9); }
+.card.img .xbtn { opacity: 0; transition: opacity .12s, background-color .12s; }
+.card.img:hover .xbtn { opacity: 1; }
 
 /* Checkbox: bottom-left of the preview; downloaded check: bottom-right (green circle) */
 .cb { position: absolute; z-index: 3; left: 8px; bottom: 9px; width: 20px; height: 20px; margin: 0; appearance: none; border-radius: 6px; background: rgba(12, 13, 16, .55); border: 1.8px solid rgba(255, 255, 255, .9); cursor: pointer; transition: background .12s; }
@@ -190,8 +198,8 @@ select.capsel:disabled {
 .card.img.picked { outline: 2px solid var(--accent); outline-offset: -2px; }
 .card.img .chipov { opacity: 0; transition: opacity .12s; }
 .card.img:hover .chipov, .card.img.picked .chipov { opacity: 1; }
-.card.img .chipov.tl { top: 8px; max-width: calc(100% - 16px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card.img .st { right: 8px; }
+.card.img .chipov.tl { top: 8px; max-width: calc(100% - 44px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.img .st { right: 36px; }
 
 /* ---- Action dock ---- */
 .dock { display: flex; gap: 8px; padding: 10px 14px 12px; background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 16px rgba(16, 24, 40, .04); }

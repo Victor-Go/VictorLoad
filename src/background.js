@@ -225,13 +225,17 @@ function buildState(tabId) {
     });
   }
 
+  // Items the user dismissed with the card's X. Kept only for this page load (see the resets below).
+  const hidden = t.excluded;
+  const shown = (m) => [...m.values()].filter((x) => !hidden?.has(x.id));
+
   return {
     tabId,
     pageUrl: t.pageUrl,
     title: t.title,
     host: hostOf(t.pageUrl),
-    images: [...imgs.values()],
-    videos: [...vids.values()],
+    images: shown(imgs),
+    videos: shown(vids),
     noScan: Object.keys(t.frames).length === 0,
     loading: !!t.site?.loading,
     siteError: t.site?.error || '',
@@ -278,6 +282,7 @@ async function onScan(msg, sender) {
       t.netImgs = {};
       t.site = null;
       t.title = '';
+      t.excluded = null;
     }
     t.pageUrl = msg.pageUrl || t.pageUrl;
     t.title = msg.title || t.title;
@@ -317,6 +322,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'download':
         await handleDownload(msg.tabId, msg.entries);
         return { ok: true };
+      case 'exclude': {
+        // Hide cards from this page's list until the page is reloaded. Not persisted on purpose.
+        const t = tabOf(msg.tabId);
+        t.excluded ||= new Set();
+        for (const id of msg.ids || []) t.excluded.add(String(id));
+        return buildState(msg.tabId);
+      }
       case 'refresh': {
         // Start over: re-read the tab, forget the old page data, make sure the content script
         // is there, rescan and run the site extractor again.
@@ -330,6 +342,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         t.frames = {};
         t.site = null;
+        t.excluded = null;
         try {
           await chrome.scripting.executeScript({
             target: { tabId: msg.tabId, allFrames: true },
@@ -388,6 +401,7 @@ chrome.webNavigation.onCommitted.addListener((d) => {
     t.sizes = {};
     t.netImgs = {};
     t.site = null;
+    t.excluded = null; // a reload (or any new document) brings every item back
     t.pageUrl = d.url;
     t.title = '';
     maybeExtract(d.tabId, t);
@@ -671,6 +685,11 @@ function ownVideoName(item, q) {
   return item.title || '';
 }
 
+/** {title}: what the preview card shows. Site extractors name their videos; everything else is the tab title */
+function cardTitle(item, tabTitle) {
+  return (item.source === 'site' && item.title) || tabTitle;
+}
+
 async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
   const dir = expandSavePath(S.savePath, { site: host });
   const id = item.id;
@@ -680,6 +699,7 @@ async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
     const own = imgBase(item.url);
     const stem =
       formatName(S.nameFormat, {
+        title: cardTitle(item, tabTitle),
         tab: tabTitle,
         name: own,
         resolution: item.w && item.h ? `${item.w}x${item.h}` : '',
@@ -705,6 +725,7 @@ async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
   const resolution = q.height ? `${q.height}p` : item.w && item.h ? `${item.w}x${item.h}` : item.h ? `${item.h}p` : '';
   const base =
     formatName(S.nameFormat, {
+      title: cardTitle(item, tabTitle),
       tab: tabTitle,
       name: ownVideoName(item, q),
       duration: fmtDurName(item.duration),

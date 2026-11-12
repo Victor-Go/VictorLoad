@@ -4,6 +4,18 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.6]
+
+### Added
+
+- New file name placeholder `{title}`: the title shown on the preview card (the tweet text on X, the video title on YouTube and Bilibili), or the tab title where there is none. It is now the default, so videos from the X home timeline are no longer all named "Home / X". `{tab}` still means the browser tab title. Existing installs that still had the old default `{tab}` move to `{title}` once.
+- An X button on every video and image card removes it from the list until the page is reloaded.
+
+### Changed
+
+- Newly found videos and images are added at the top of the list instead of the end.
+- On video cards the duration moved to the top-left corner (next to the HLS tag) to make room for the X button.
+
 ## [1.0.5]
 
 ### Fixed

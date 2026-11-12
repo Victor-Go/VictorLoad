@@ -17,8 +17,10 @@ export const DEFAULTS = {
   // Empty = the Downloads folder itself.
   savePath: 'VictorLoad/{site}/',
   ytH264: true, // prefer H.264+AAC on YouTube so captured audio/video can be muxed into one mp4 (1080p max)
-  // File name template. Placeholders: {tab} {name} {duration} {resolution}
-  nameFormat: '{tab}',
+  // File name template. Placeholders: {title} {tab} {name} {duration} {resolution}
+  nameFormat: '{title}',
+  // Bumped when a default changes meaning; stored settings below it get migrated in mergeSettings
+  nameFormatV: 2,
   // UI language: 'auto' (default, follows the browser; Chinese browsers get Chinese, everything else English), 'zh' or 'en'
   uiLang: 'auto',
   // Where the UI opens: 'sidepanel' (docked, live) or 'popup' (floating, closes on blur)
@@ -38,6 +40,8 @@ export function mergeSettings(stored) {
   delete st.subfolder;
   // Older versions saved a default of 1080 that the user never chose
   if (st.prefHeight === 1080 && !st.prefHeightUser) delete st.prefHeight;
+  // The old default {tab} was never a choice: move it to {title}. Once the version is stamped, {tab} is respected.
+  if (!st.nameFormatV && st.nameFormat === '{tab}') delete st.nameFormat;
   return { ...DEFAULTS, ...st };
 }
 
@@ -211,11 +215,12 @@ export function fmtDurName(s) {
   return `${ss}s`;
 }
 
-export const NAME_TOKENS = ['{tab}', '{name}', '{duration}', '{resolution}'];
+export const NAME_TOKENS = ['{title}', '{tab}', '{name}', '{duration}', '{resolution}'];
 
 /**
  * Expand a file name template. Unknown / empty values become empty strings, then
  * leftover empty brackets and dangling separators are cleaned up.
+ *   {title}       the title shown on the preview card (site extractors), else the page (tab) title
  *   {tab}         page (tab) title
  *   {name}        the media's own name (file name, or the video title on site extractors)
  *   {duration}    e.g. 5m32s
@@ -223,7 +228,9 @@ export const NAME_TOKENS = ['{tab}', '{name}', '{duration}', '{resolution}'];
  */
 export function formatName(tpl, vars, max = 150) {
   const clean = (x) => safeName(x, 120);
-  let s = String(tpl || '{tab}').replace(/\{(tab|name|duration|resolution)\}/g, (_, k) => clean(vars[k] || ''));
+  let s = String(tpl || '{title}').replace(/\{(title|tab|name|duration|resolution)\}/g, (_, k) =>
+    clean((k === 'title' ? vars.title || vars.tab : vars[k]) || ''),
+  );
   s = s.replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, '');
   s = safeName(s, max).replace(/^[\s._-]+|[\s._-]+$/g, '');
   return safeName(s, max); // re-run so a reserved device name (CON, NUL…) gets its "_" prefix back
