@@ -12,6 +12,7 @@ export const DEFAULTS = {
   vidMinMB: 0,
   // Behavior
   showBadge: true, // show a green check on already-downloaded images/videos in the page
+  pageDlBtn: true, // show a blue download arrow on items that were not downloaded yet; a click saves the best quality
   autoRemember: true, // remember the tag structure of what was selected on "Download selected"
   // Folder (inside the browser's Downloads folder) to save into. Placeholders: {site} {date} {year} {month}.
   // Empty = the Downloads folder itself.

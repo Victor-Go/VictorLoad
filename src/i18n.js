@@ -35,6 +35,9 @@ export const EN = {
   '页面上显示绿色对勾': 'Mark downloaded items on the page',
   '已下载的图片和视频右下角会出现绿色小对勾':
     'Downloaded images and videos get a small green check in the bottom-right corner',
+  '页面上显示蓝色下载箭头': 'Show a download arrow on the page',
+  '没下载过的图片和视频右下角会出现蓝色向下箭头，点击即以最高画质下载':
+    'Images and videos not downloaded yet get a blue arrow in the bottom-right corner; one click saves the best quality',
   '恢复默认': 'Reset',
   '语言 / Language': 'Language / 语言',
   '全部下载 (0)': 'Download all (0)', // initial text, replaced as soon as the list renders

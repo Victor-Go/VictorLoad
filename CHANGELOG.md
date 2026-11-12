@@ -4,6 +4,12 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.7]
+
+### Added
+
+- A blue download arrow now sits where the green check goes, on every video and image that has not been downloaded yet. One click saves the highest quality through the normal download path. It can be switched off in Settings → Download ("Show a download arrow on the page"). It is not shown on YouTube, whose videos are saved from the panel.
+
 ## [1.0.6]
 
 ### Added

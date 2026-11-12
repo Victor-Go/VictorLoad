@@ -827,7 +827,6 @@ $('#btnSettings').addEventListener('click', () => show('Settings'));
 $$('[data-back]').forEach((b) => b.addEventListener('click', () => show('Main')));
 
 function renderHistory() {
-  $('#optBadge').checked = !!S.showBadge;
   const q = $('#histSearch').value.trim().toLowerCase();
   const box = $('#histList');
   box.innerHTML = '';
@@ -881,10 +880,6 @@ function dismissHistoryNotice() {
     .catch((e) => console.warn('[VictorLoad] could not clear the notice', e));
 }
 $('#histNoticeOk').addEventListener('click', dismissHistoryNotice);
-$('#optBadge').addEventListener('change', (e) => {
-  S.showBadge = e.target.checked;
-  saveSettings();
-});
 
 function renderSettings() {
   $$('[data-s]').forEach((i) => {

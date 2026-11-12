@@ -322,6 +322,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'download':
         await handleDownload(msg.tabId, msg.entries);
         return { ok: true };
+      case 'quick-download':
+        return quickDownload(sender.tab?.id, msg.keys);
       case 'exclude': {
         // Hide cards from this page's list until the page is reloaded. Not persisted on purpose.
         const t = tabOf(msg.tabId);
@@ -551,6 +553,26 @@ async function enrichHls(tabId, key, url) {
 
 // ---- Downloads ----
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+/**
+ * The blue arrow in the page: find the item behind the badge and download its best quality through the
+ * regular download path (handleDownload), exactly as the panel's button would.
+ */
+async function quickDownload(tabId, keys) {
+  if (tabId == null) return { ok: false };
+  const want = new Set(keys || []);
+  const st = buildState(tabId);
+  const item = [...st.videos, ...st.images].find((it) => (it.keys || []).some((k) => want.has(k)));
+  if (!item) return { ok: false, error: 'not found' };
+  let q = 0;
+  if (item.kind === 'video') {
+    // Qualities are sorted tallest first. A buffered YouTube capture needs the panel (it may have to fill gaps first).
+    q = (item.qualities || []).findIndex((x) => !x.error && x.type !== 'capture');
+    if (q < 0) return { ok: false, error: 'no direct quality' };
+  }
+  await handleDownload(tabId, [{ item, q, force: false }]);
+  return { ok: true };
+}
 
 async function handleDownload(tabId, entries) {
   const S = await getSettings();
@@ -1140,9 +1162,7 @@ async function onHlsDone(msg) {
     // browser download on recovery instead of saving the same Blob a second time.
     const [existing] = await chrome.downloads.search({ url: msg.blobUrl });
     startingDownload = !existing;
-    const dlId =
-      existing?.id ??
-      (await downloadNamed(msg.blobUrl, filename));
+    const dlId = existing?.id ?? (await downloadNamed(msg.blobUrl, filename));
     startingDownload = false;
     pending[dlId] = { itemId: j.itemId, record: j.record, jobId: msg.jobId };
     jobs.delete(msg.jobId);

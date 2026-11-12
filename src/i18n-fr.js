@@ -28,6 +28,9 @@ export const FR = {
   '返回': 'Retour',
   '清空': 'Effacer',
   '搜索标题、站点或清晰度': 'Rechercher un titre, un site ou une qualité',
+  '页面上显示蓝色下载箭头': 'Afficher une flèche de téléchargement sur la page',
+  '没下载过的图片和视频右下角会出现蓝色向下箭头，点击即以最高画质下载':
+    'Les images et vidéos pas encore téléchargées reçoivent une flèche bleue en bas à droite ; un clic enregistre la meilleure qualité',
   '页面上显示绿色对勾': 'Marquer les éléments téléchargés sur la page',
   '已下载的图片和视频右下角会出现绿色小对勾':
     'Les images et vidéos téléchargées affichent une petite coche verte dans le coin inférieur droit',

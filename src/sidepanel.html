@@ -74,13 +74,6 @@
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
           <input id="histSearch" type="search" placeholder="搜索标题、站点或清晰度" />
         </div>
-        <label class="switchrow">
-          <span>
-            <b>页面上显示绿色对勾</b>
-            <em>已下载的图片和视频右下角会出现绿色小对勾</em>
-          </span>
-          <input type="checkbox" id="optBadge" class="toggle" />
-        </label>
         <div id="histList" class="hist-list"></div>
       </div>
     </section>
@@ -162,6 +155,14 @@
           <label class="switchrow">
             <span><b>记住我选的内容</b><em>点「下载选中」后，下次会在这个网站的「主要」列表中显示并勾选同类内容</em></span>
             <input type="checkbox" class="toggle" data-s="autoRemember" />
+          </label>
+          <label class="switchrow">
+            <span><b>页面上显示蓝色下载箭头</b><em>没下载过的图片和视频右下角会出现蓝色向下箭头，点击即以最高画质下载</em></span>
+            <input type="checkbox" class="toggle" data-s="pageDlBtn" />
+          </label>
+          <label class="switchrow">
+            <span><b>页面上显示绿色对勾</b><em>已下载的图片和视频右下角会出现绿色小对勾</em></span>
+            <input type="checkbox" class="toggle" data-s="showBadge" />
           </label>
           <div class="namebox">
             <span class="hint">保存位置（浏览器下载文件夹之内）</span>

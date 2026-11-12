@@ -44,7 +44,7 @@ The list is live: new items appear as they load and disappear when they leave th
 ## Other features
 
 - Pick the pictures you care about once, and next time that kind of content is pre-selected on the same site.
-- A history list, and a small green check on items you have already downloaded.
+- A history list, a small green check on items you have already downloaded, and a blue arrow on the rest: one click saves the best quality (can be turned off in settings).
 - File names can be built from `{title}`, `{tab}`, `{name}`, `{duration}` and `{resolution}`.
 - You can change what counts as a "main" image or video.
 - Side panel or popup, English, Français, 简体中文 or 繁體中文, light and dark.

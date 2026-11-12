@@ -229,3 +229,46 @@ test('excluded items disappear until the page is reloaded', async () => {
   await scan();
   assert.deepEqual((await call({ type: 'getState', tabId: 9 })).videos.map((v) => v.id).sort(), ['v1', 'v2']);
 });
+
+test('the in-page arrow downloads the best quality through the normal path', async () => {
+  const sender = { tab: { id: 11 }, frameId: 0 };
+  const q = (h) => ({ label: h + 'p', height: h, url: `https://cdn.example.com/${h}.mp4`, type: 'direct', ext: 'mp4' });
+  const img = {
+    url: 'https://example.com/big.jpg',
+    thumb: 'https://example.com/big.jpg',
+    w: 800,
+    h: 600,
+    keys: ['https://example.com/big.jpg'],
+  };
+  const cap = {
+    key: 'cap1',
+    source: 'site',
+    title: 'Cap',
+    keys: ['cap-key'],
+    qualities: [{ label: '720p', height: 720, type: 'capture', vgid: 'a', agid: 'b', cov: 0.2, holes: 0 }],
+  };
+  await call(
+    {
+      type: 'scan',
+      pageUrl: 'https://example.com/q',
+      title: 'Q',
+      images: [img],
+      videos: [{ key: 'v1', keys: ['vk'], title: 'Clip', qualities: [q(480), q(1080), q(720)] }],
+      site: [cap],
+      keys: [],
+    },
+    sender,
+  );
+  store.local.settings.nameFormat = '{title}';
+  const before = downloads.length;
+  assert.deepEqual(await call({ type: 'quick-download', keys: ['vk'] }, sender), { ok: true });
+  await tick();
+  assert.equal(downloads.length, before + 1);
+  assert.equal(downloads.at(-1).url, 'https://cdn.example.com/1080.mp4');
+  assert.deepEqual(await call({ type: 'quick-download', keys: [img.url] }, sender), { ok: true });
+  await tick();
+  assert.equal(downloads.at(-1).url, img.url);
+  // a capture that is not buffered yet is left to the panel; unknown keys do nothing
+  assert.equal((await call({ type: 'quick-download', keys: ['cap-key'] }, sender)).ok, false);
+  assert.equal((await call({ type: 'quick-download', keys: ['nope'] }, sender)).ok, false);
+});

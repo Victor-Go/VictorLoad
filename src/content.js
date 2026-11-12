@@ -1,5 +1,5 @@
 // Content script. Scans the page for images and videos, reports them to the background,
-// and puts a green check on the ones that were already downloaded.
+// puts a green check on the ones that were already downloaded and a blue download arrow on the others.
 (() => {
   if (window.__victorloadContent) return;
   window.__victorloadContent = true;
@@ -120,9 +120,9 @@
   }
 
   // ---- Scanning ----
-  let badgeCandidates = []; // [{el, keys}], used for the badges
+  let badgeCandidates = []; // [{el, keys, quick}], used for the badges; quick = may get the one-click download arrow
   let downKeys = new Set();
-  let settings = { showBadge: true };
+  let settings = { showBadge: true, pageDlBtn: true };
   const twItems = new Map(); // Twitter videos (from the MAIN-world hook)
   let mseStatus = null; // YouTube segment-capture status (from mse.js)
   let lastPayload = '';
@@ -141,6 +141,8 @@
       const r = el.getBoundingClientRect();
       const url = IS_TW ? upgradeTwitter(full) : full;
       const keys = [normKey(url), normKey(thumb)].filter(Boolean);
+      const inChrome = !!el.closest('nav,header,footer,aside,[role="navigation"],[role="banner"],[role="contentinfo"]');
+      const siteMain = twitterSiteMain(el, full);
       out.push({
         url,
         thumb: thumb || url,
@@ -149,12 +151,25 @@
         rw: Math.round(r.width),
         rh: Math.round(r.height),
         sig: sig(el),
-        inChrome: !!el.closest('nav,header,footer,aside,[role="navigation"],[role="banner"],[role="contentinfo"]'),
-        siteMain: twitterSiteMain(el, full),
+        inChrome,
+        siteMain,
         keys,
         ...extra,
       });
-      badgeCandidates.push({ el, keys });
+      // The still frame of an X video (media grid, search results) stands for the video: tie it to the video's
+      // keys so the check shows once the video is downloaded and the arrow downloads the video, not the jpg.
+      let badgeKeys = keys;
+      let quick = !IS_YT && !inChrome && siteMain !== false && r.width >= 150 && r.height >= 150;
+      if (IS_TW && /video_thumb\//.test(full)) {
+        const tid = el
+          .closest('a[href*="/status/"]')
+          ?.getAttribute('href')
+          ?.match(/\/status\/(\d+)/)?.[1];
+        const vids = [...twItems.values()].filter((it) => tid && it.tweetId === tid);
+        badgeKeys = [...keys, ...vids.flatMap((it) => ['tw-vid:' + it.id, normKey(it.thumb)])];
+        if (!vids.length) quick = false; // the video is not known (yet): nothing but the still frame to fetch
+      }
+      badgeCandidates.push({ el, keys: badgeKeys, quick });
     };
 
     for (const img of document.images) {
@@ -231,7 +246,8 @@
       const keys = [normKey(abs(v.poster || ''))].filter(Boolean);
       if (IS_PAGE_SITE && r.width >= 200) keys.push(pageKeyOf(location.href));
       if (!srcs.length) {
-        if (keys.length) badgeCandidates.push({ el: v, keys });
+        // A video without a direct address (blob:, YouTube) has nothing to fetch, except where the background extracts it
+        if (keys.length) badgeCandidates.push({ el: v, keys, quick: IS_PAGE_SITE && !IS_YT && r.width >= 200 });
         continue;
       }
       const vh = v.videoHeight || 0;
@@ -250,7 +266,7 @@
         };
       });
       for (const q of qualities) keys.push(normKey(q.url));
-      badgeCandidates.push({ el: v, keys });
+      badgeCandidates.push({ el: v, keys, quick: !IS_YT && r.width >= 200 });
       out.push({
         source: 'dom',
         title: document.title,
@@ -294,7 +310,7 @@
       }));
       const el = posters.get(tk);
       const keys = ['tw-vid:' + it.id, tk];
-      if (el) badgeCandidates.push({ el, keys });
+      if (el) badgeCandidates.push({ el, keys, quick: true });
       const text = (it.text || '')
         .replace(/https?:\/\/t\.co\/\w+/g, '')
         .replace(/\s+/g, ' ')
@@ -420,10 +436,15 @@
     scanTimer = setTimeout(scan, delay);
   }
 
-  // ---- Downloaded badges ----
+  // ---- Page badges: a green check on downloaded items, a blue download arrow on the rest ----
   let host = null;
   let layer = null;
-  let badges = []; // {el, node}
+  let badges = []; // {el, node, mode: 'done' | 'dl', keys}
+
+  const CHECK_SVG =
+    '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 6.4l2.6 2.6 5-5.6"/></svg>';
+  const ARROW_SVG =
+    '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v6.2M3.2 5.6L6 8.4l2.8-2.8"/></svg>';
 
   function ensureLayer() {
     if (layer && host.isConnected) return;
@@ -435,52 +456,116 @@
       .b{position:fixed;left:0;top:0;width:15px;height:15px;border-radius:50%;background:#16a34a;
          box-shadow:0 0 0 1.5px #fff,0 1px 3px rgba(0,0,0,.45);display:none;align-items:center;justify-content:center}
       .b svg{width:9px;height:9px}
+      .b.dl{background:#2563eb;pointer-events:auto;cursor:pointer}
+      .b.dl:hover{background:#1d4ed8}
+      .b.busy{opacity:.55;pointer-events:none}
+      .b.fail{background:#dc2626}
     </style><div id="l"></div>`;
     layer = root.getElementById('l');
     (document.documentElement || document.body).appendChild(host);
   }
 
-  function applyBadges() {
-    const want = [];
-    if (settings.showBadge && downKeys.size) {
-      for (const c of badgeCandidates) if (c.keys.some((k) => downKeys.has(k))) want.push(c.el);
+  function startQuickDownload(b) {
+    if (b.node.classList.contains('busy')) return;
+    b.node.classList.remove('fail');
+    b.node.classList.add('busy');
+    const done = (ok) => {
+      b.node.classList.remove('busy');
+      if (!ok) {
+        b.node.classList.add('fail');
+        setTimeout(() => b.node.classList.remove('fail'), 1800);
+      }
+    };
+    try {
+      // The background downloads the highest quality through the same path as the panel's buttons
+      chrome.runtime.sendMessage({ type: 'quick-download', keys: b.keys }, (res) => {
+        if (chrome.runtime.lastError) return done(false);
+        done(!!res?.ok);
+      });
+    } catch {
+      done(false); // the extension was reloaded: this page needs a refresh
     }
-    // Remove badges that are no longer needed
+  }
+
+  function applyBadges() {
+    // el -> {mode, keys}. A downloaded item always shows the check, never the arrow.
+    const want = new Map();
+    for (const c of badgeCandidates) {
+      if (c.keys.some((k) => downKeys.has(k))) {
+        if (settings.showBadge) want.set(c.el, { mode: 'done', keys: c.keys });
+      } else if (settings.pageDlBtn && c.quick && c.keys.length && !want.has(c.el)) {
+        want.set(c.el, { mode: 'dl', keys: c.keys });
+      }
+    }
+    // Remove badges that are no longer needed (or changed from arrow to check)
     badges = badges.filter((b) => {
-      if (want.includes(b.el) && b.el.isConnected) return true;
+      const w = want.get(b.el);
+      if (w && w.mode === b.mode && b.el.isConnected) {
+        b.keys = w.keys;
+        return true;
+      }
       b.node.remove();
       return false;
     });
-    if (want.length) ensureLayer();
-    for (const el of want) {
+    if (want.size) ensureLayer();
+    for (const [el, w] of want) {
       if (badges.some((b) => b.el === el)) continue;
       const node = document.createElement('div');
-      node.className = 'b';
-      node.innerHTML =
-        '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 6.4l2.6 2.6 5-5.6"/></svg>';
+      node.className = w.mode === 'dl' ? 'b dl' : 'b';
+      node.innerHTML = w.mode === 'dl' ? ARROW_SVG : CHECK_SVG;
+      const b = { el, node, mode: w.mode, keys: w.keys };
+      if (w.mode === 'dl') {
+        node.title = 'VictorLoad';
+        // Keep the click away from the page (a video or tweet underneath would react to it)
+        for (const ev of ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'dblclick'])
+          node.addEventListener(ev, (e) => e.stopPropagation());
+        node.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          startQuickDownload(b);
+        });
+      }
       layer.appendChild(node);
-      badges.push({ el, node });
+      badges.push(b);
     }
     positionBadges();
+  }
+
+  /**
+   * The badge layer is above the whole page, so without a check it would also show through whatever covers
+   * the element (a photo viewer, a dialog, a sticky bar). Sample the page just beside the badge: the element
+   * (or something inside the same card, like a link layer) must be what the user would see there.
+   */
+  function isOnTop(el, x, y) {
+    const hit = document.elementFromPoint(Math.max(0, x), Math.max(0, y));
+    if (!hit) return false;
+    if (hit === el || el.contains(hit) || hit.contains(el)) return true;
+    let a = hit.parentElement;
+    while (a && !a.contains(el)) a = a.parentElement;
+    if (!a) return false;
+    const ar = a.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    return ar.width * ar.height <= er.width * er.height * 2.5;
   }
 
   function positionBadges() {
     for (const b of badges) {
       const r = b.el.getBoundingClientRect();
-      const vis =
+      const min = b.mode === 'dl' ? 120 : 24; // arrows only on content-sized elements, never on small icons
+      let vis =
         b.el.isConnected &&
-        r.width >= 24 &&
-        r.height >= 24 &&
+        r.width >= min &&
+        r.height >= min &&
         r.bottom > 0 &&
         r.right > 0 &&
         r.top < innerHeight &&
         r.left < innerWidth;
+      const x = Math.min(r.right, innerWidth) - 15 - 5;
+      const y = Math.min(r.bottom, innerHeight) - 15 - 5;
+      // Probe 3px up-left of the badge: our own arrow sits at (x, y) and must not be what we hit
+      if (vis && !isOnTop(b.el, x - 3, y - 3)) vis = false;
       b.node.style.display = vis ? 'flex' : 'none';
-      if (vis) {
-        const x = Math.min(r.right, innerWidth) - 15 - 5;
-        const y = Math.min(r.bottom, innerHeight) - 15 - 5;
-        b.node.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
-      }
+      if (vis) b.node.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
     }
   }
 
@@ -557,12 +642,12 @@
   });
 
   chrome.storage.local.get('settings').then((r) => {
-    settings = { showBadge: true, ...(r.settings || {}) };
+    settings = { showBadge: true, pageDlBtn: true, ...(r.settings || {}) };
     applyBadges();
   });
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area === 'local' && ch.settings) {
-      settings = { showBadge: true, ...(ch.settings.newValue || {}) };
+      settings = { showBadge: true, pageDlBtn: true, ...(ch.settings.newValue || {}) };
       applyBadges();
     }
   });
