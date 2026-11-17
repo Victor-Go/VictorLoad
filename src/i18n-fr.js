@@ -15,6 +15,12 @@ export const FR = {
   '此视频使用独立音轨，暂不支持下载。': 'Cette vidéo utilise une piste audio séparée. Son téléchargement n’est pas encore pris en charge.',
   // ---- static HTML ----
   '正在嗅探…': 'Analyse en cours…',
+  '觉得好用？给 VictorLoad 点个 Star 吧': 'VictorLoad vous plaît ? Mettez-lui une étoile sur GitHub',
+  '去 Star': 'Ajouter une étoile',
+  '关闭': 'Fermer',
+  '发现新版本 v{v}': 'Nouvelle version v{v} disponible',
+  '去更新': 'Mettre à jour',
+  '忽略此版本': 'Ignorer cette version',
   '重新嗅探当前页面': 'Réanalyser cette page',
   '重新嗅探': 'Réanalyser',
   '下载记录': 'Historique des téléchargements',

@@ -10,6 +10,7 @@ import {
   classifyImages,
   isMainVideo,
   DEFAULTS,
+  isNewerVersion,
 } from '../src/shared.js';
 
 const vars = { tab: 'Hello World', name: 'clip_001', duration: '2m05s', resolution: '1080p' };
@@ -140,4 +141,14 @@ test('mergeSettings: the unstamped old default {tab} becomes {title}; a stamped 
   assert.equal(mergeSettings({ nameFormat: '{tab}' }).nameFormat, '{title}');
   assert.equal(mergeSettings({ nameFormat: '{tab}', nameFormatV: 2 }).nameFormat, '{tab}');
   assert.equal(mergeSettings({ nameFormat: '{name}' }).nameFormat, '{name}');
+});
+
+test('isNewerVersion compares MAJOR.MINOR.PATCH numerically and ignores junk', () => {
+  assert.equal(isNewerVersion('1.0.8', '1.0.7'), true);
+  assert.equal(isNewerVersion('v1.10.0', '1.9.9'), true);
+  assert.equal(isNewerVersion('2.0.0', '1.99.99'), true);
+  assert.equal(isNewerVersion('1.0.7', '1.0.7'), false);
+  assert.equal(isNewerVersion('1.0.6', '1.0.7'), false);
+  assert.equal(isNewerVersion('1.0.8-beta', '1.0.7'), false);
+  assert.equal(isNewerVersion('', '1.0.7'), false);
 });

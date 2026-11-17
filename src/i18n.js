@@ -19,6 +19,12 @@ export const EN = {
   '此视频使用独立音轨，暂不支持下载。': 'This video has a separate audio track. Downloading it is not supported yet.',
   // ---- static HTML ----
   '正在嗅探…': 'Scanning…',
+  '觉得好用？给 VictorLoad 点个 Star 吧': 'Enjoying VictorLoad? Give it a Star on GitHub',
+  '去 Star': 'Star it',
+  '关闭': 'Close',
+  '发现新版本 v{v}': 'New version v{v} available',
+  '去更新': 'Update',
+  '忽略此版本': 'Ignore this version',
   '重新嗅探当前页面': 'Scan this page again',
   '重新嗅探': 'Scan again',
   '下载记录': 'Download history',

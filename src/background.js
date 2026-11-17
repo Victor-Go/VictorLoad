@@ -14,6 +14,7 @@ import {
   downloadedKeySet,
   compactHistoryRecord,
   isHistoryQuotaError,
+  isNewerVersion,
 } from './shared.js';
 import { siteOf, extractSite, hasVideoExtractor } from './sites.js';
 import { parseM3U8, EXTERNAL_AUDIO_ERROR } from './hlsparse.js';
@@ -492,18 +493,109 @@ async function handleNet(d) {
     sig: '',
     keys: [key],
     qualities: [
-      { label: isHls ? 'HLS' : ext.toUpperCase(), height: 0, url: d.url, ext, type: isHls ? 'hls' : 'direct', size },
+      {
+        label: isHls ? 'HLS' : ext.toUpperCase(),
+        height: 0,
+        url: d.url,
+        ext,
+        type: isHls ? 'hls' : 'direct',
+        size,
+        ...(isHls && refOf(d.initiator) ? { ref: refOf(d.initiator) } : {}),
+      },
     ],
   };
   if (size) t.sizes[d.url] = size;
   schedule(d.tabId);
-  if (isHls) enrichHls(d.tabId, key, d.url);
+  if (isHls) enrichHls(d.tabId, key, d.url, refOf(d.initiator));
 }
 
-async function enrichHls(tabId, key, url) {
+/**
+ * The page (usually a player iframe on another site) that requested a stream. Hotlink-protected CDNs only
+ * accept requests that look like they come from that page, so we replay its origin on our own fetches.
+ */
+function refOf(initiator) {
+  try {
+    const u = new URL(initiator || '');
+    return /^https?:$/.test(u.protocol) ? u.origin : '';
+  } catch {
+    return '';
+  }
+}
+
+const REFERER_RULE_BASE = 1000; // rule ids 1000-1999 are reserved for the per-host rules below
+const REFERER_RULE_MAX = 100;
+const refererRules = new Map(); // host -> {id, ref}, in insertion order
+
+/**
+ * Make this extension's own requests (tabId -1: the service worker and the offscreen document) to the
+ * stream's host carry the original page's Referer and Origin, via a session declarativeNetRequest rule.
+ * Normal browsing is untouched because the rule only matches requests that belong to no tab.
+ */
+async function allowReferer(url, ref) {
+  if (!ref) return;
+  const dnr = chrome.declarativeNetRequest;
+  if (!dnr?.updateSessionRules) return;
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return;
+  }
+  try {
+    if (!refererRules.size) {
+      for (const r of await dnr.getSessionRules()) {
+        const h = r.condition?.requestDomains?.[0];
+        const hdr = r.action?.requestHeaders?.find((x) => x.header === 'Origin');
+        if (r.id >= REFERER_RULE_BASE && h && hdr) refererRules.set(h, { id: r.id, ref: hdr.value });
+      }
+    }
+    const have = refererRules.get(host);
+    if (have?.ref === ref) return;
+    let id = have?.id;
+    const removeRuleIds = [];
+    if (!id) {
+      if (refererRules.size >= REFERER_RULE_MAX) {
+        const [oldHost, old] = refererRules.entries().next().value;
+        refererRules.delete(oldHost);
+        removeRuleIds.push(old.id);
+      }
+      const used = new Set([...refererRules.values()].map((r) => r.id));
+      id = REFERER_RULE_BASE;
+      while (used.has(id)) id++;
+    }
+    refererRules.delete(host);
+    refererRules.set(host, { id, ref });
+    await dnr.updateSessionRules({
+      removeRuleIds: [...removeRuleIds, id],
+      addRules: [
+        {
+          id,
+          priority: 2,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              { header: 'Referer', operation: 'set', value: ref + '/' },
+              { header: 'Origin', operation: 'set', value: ref },
+            ],
+          },
+          condition: {
+            requestDomains: [host],
+            tabIds: [chrome.tabs.TAB_ID_NONE ?? -1],
+            resourceTypes: ['xmlhttprequest', 'media', 'other'],
+          },
+        },
+      ],
+    });
+  } catch (e) {
+    console.warn('[VictorLoad] could not set the Referer rule for', host, e);
+  }
+}
+
+async function enrichHls(tabId, key, url, ref) {
   const t = tabs.get(tabId);
   const item = t?.net[key];
   try {
+    await allowReferer(url, ref);
     const r = await fetch(url, { credentials: 'include' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const text = (await r.text()).slice(0, 4_000_000);
@@ -521,6 +613,7 @@ async function enrichHls(tabId, key, url) {
           ext: 'ts',
           type: 'hls',
           error: v.externalAudio ? EXTERNAL_AUDIO_ERROR : '',
+          ...(ref ? { ref } : {}),
         }))
         .filter((q) => {
           const k = q.url;
@@ -531,7 +624,7 @@ async function enrichHls(tabId, key, url) {
       const top = p.variants.reduce((a, b) => (b.h > a.h ? b : a), { h: 0, w: 0 });
       item.w = top.w;
       item.h = top.h;
-      if (!item.qualities.length) item.qualities = [{ label: 'HLS', height: 0, url, ext: 'ts', type: 'hls' }];
+      if (!item.qualities.length) item.qualities = [{ label: 'HLS', height: 0, url, ext: 'ts', type: 'hls', ...(ref ? { ref } : {}) }];
     } else {
       if (!p.segs.length) {
         delete t.net[key];
@@ -794,7 +887,7 @@ async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
     const name = `${dir}${base}.${q.ext || 'ts'}`;
     emit({ type: 'dl', id, state: 'queued' });
     const jobId = uid();
-    jobs.set(jobId, { itemId: id, url: q.url, filename: name, record, state: 'queued' });
+    jobs.set(jobId, { itemId: id, url: q.url, ref: q.ref || '', filename: name, record, state: 'queued' });
     try {
       await saveHlsJobs();
     } catch (e) {
@@ -1077,7 +1170,42 @@ async function reconcileHls() {
   }
 }
 
+// ---- Update check ----
+// Once a day, ask GitHub for the latest release and remember it; the panel shows a notice when it is newer
+// than this version. Only a public version number is read: nothing about the user or their downloads is sent.
+const UPDATE_ALARM = 'victorload-update-check';
+const UPDATE_API = 'https://api.github.com/repos/Victor-Go/VictorLoad/releases/latest';
+const UPDATE_RELEASE_URL = /^https:\/\/github\.com\/Victor-Go\/VictorLoad\/releases\//;
+const UPDATE_EVERY_MIN = 24 * 60;
+
+async function checkUpdate({ force = false } = {}) {
+  const { updateInfo } = await chrome.storage.local.get('updateInfo');
+  if (!force && updateInfo?.checkedAt && Date.now() - updateInfo.checkedAt < (UPDATE_EVERY_MIN / 2) * 60_000) return;
+  const r = await fetch(UPDATE_API, {
+    credentials: 'omit',
+    headers: { Accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rel = await r.json();
+  const version = String(rel.tag_name || '').replace(/^v/, '');
+  const url = UPDATE_RELEASE_URL.test(rel.html_url || '') ? rel.html_url : '';
+  const newer = isNewerVersion(version, chrome.runtime.getManifest().version);
+  await chrome.storage.local.set({ updateInfo: { checkedAt: Date.now(), ...(newer && url ? { version, url } : {}) } });
+}
+
+function scheduleUpdateCheck() {
+  chrome.alarms
+    .create(UPDATE_ALARM, { delayInMinutes: 1, periodInMinutes: UPDATE_EVERY_MIN })
+    .catch((e) => console.warn('[VictorLoad] could not schedule the update check', e));
+}
+chrome.runtime.onInstalled.addListener(scheduleUpdateCheck);
+chrome.runtime.onStartup.addListener(scheduleUpdateCheck);
+
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM) {
+    return checkUpdate().catch((e) => console.warn('[VictorLoad] update check failed', e));
+  }
   if (alarm.name === HLS_ALARM) {
     return reconcileHls().catch((e) => console.warn('[VictorLoad] HLS recovery check failed', e));
   }
@@ -1121,6 +1249,7 @@ function wakeHls() {
         j.state = 'running';
         await saveHlsJobs();
         await ensureOffscreen();
+        await allowReferer(j.url, j.ref);
         emit({ type: 'dl', id: j.itemId, state: 'progress', pct: 0 });
         // Idempotent in offscreen.js: reattaches to a running job or replays its completed result.
         await chrome.runtime.sendMessage({ target: 'offscreen', type: 'hls-start', jobId, url: j.url });

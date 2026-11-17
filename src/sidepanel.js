@@ -13,6 +13,7 @@ import {
   keyHash,
   downloadedKeySet,
   historyThumb,
+  isNewerVersion,
 } from './shared.js';
 import { videoNotice, siteErrorText, historyNoticeText } from './notices.js';
 
@@ -1223,6 +1224,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;
+  if (ch.updateInfo) showUpdate(ch.updateInfo.newValue);
   if (ch.history) {
     setHistory(ch.history.newValue);
     if (!$('#viewHistory').classList.contains('hidden')) renderHistory();
@@ -1234,14 +1236,47 @@ chrome.storage.onChanged.addListener((ch, area) => {
   }
 });
 
+// ---- Update notice ----
+// background.js looks up the latest GitHub release once a day; here we only show what it found.
+let updateDismissed = '';
+function showUpdate(info) {
+  const bar = $('#updateBar');
+  const ok =
+    info?.version &&
+    info.url &&
+    info.version !== updateDismissed &&
+    isNewerVersion(info.version, chrome.runtime.getManifest().version);
+  bar.classList.toggle('hidden', !ok);
+  if (!ok) return;
+  $('#updateTxt').textContent = T('发现新版本 v{v}', { v: info.version });
+  $('#updateGo').href = info.url;
+}
+$('#updateClose').addEventListener('click', async () => {
+  const { updateInfo } = await chrome.storage.local.get('updateInfo');
+  updateDismissed = updateInfo?.version || '';
+  $('#updateBar').classList.add('hidden');
+  storeLocal({ updateDismissed }, 'the ignored version');
+});
+
 // ---- Startup ----
 (async function init() {
-  const st = await chrome.storage.local.get(['settings', 'remembered', 'history']);
+  const st = await chrome.storage.local.get(['settings', 'remembered', 'history', 'starDismissed', 'updateInfo', 'updateDismissed']);
   S = mergeSettings(st.settings);
   remembered = st.remembered || {};
   setHistory(st.history);
   setLang(S.uiLang);
   applyDom();
+  // One-time "Star on GitHub" reminder: gone for good once the user clicks it or closes it
+  const starBar = $('#starBar');
+  if (!st.starDismissed) starBar.classList.remove('hidden');
+  const dismissStar = () => {
+    starBar.classList.add('hidden');
+    storeLocal({ starDismissed: true }, 'the Star reminder choice');
+  };
+  $('#starGo').addEventListener('click', dismissStar);
+  $('#starClose').addEventListener('click', dismissStar);
+  updateDismissed = st.updateDismissed || '';
+  showUpdate(st.updateInfo);
   try {
     // A problem reported while the panel was closed
     const { historyNotice: pendingNotice } = await chrome.storage.session.get('historyNotice');

@@ -10,6 +10,23 @@
   <body>
     <!-- ============ Main view ============ -->
     <section id="viewMain" class="view">
+      <div id="starBar" class="starbar hidden">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17.2l-5.4 3 1.1-6.1-4.5-4.2 6.1-.8z"/></svg>
+        <span class="txt">觉得好用？给 VictorLoad 点个 Star 吧</span>
+        <a id="starGo" class="go" href="https://github.com/Victor-Go/VictorLoad" target="_blank" rel="noopener noreferrer">去 Star</a>
+        <button id="starClose" class="x" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div id="updateBar" class="starbar update hidden">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+        <span class="txt" id="updateTxt"></span>
+        <a id="updateGo" class="go" href="#" target="_blank" rel="noopener noreferrer">去更新</a>
+        <button id="updateClose" class="x" title="忽略此版本" aria-label="忽略此版本">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
       <header class="top">
         <div class="avatar" id="avatar">V</div>
         <div class="site">

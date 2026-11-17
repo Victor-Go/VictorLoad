@@ -4,6 +4,17 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.8]
+
+### Added
+
+- A new-version notice in the panel. Once a day the extension reads the latest release number from GitHub's public API (no cookies, nothing about you or your downloads is sent) and, when a newer version exists, shows a notice with a link to the release page. "Ignore this version" hides it until the next release. See the privacy policy.
+- A one-time reminder to star the project on GitHub at the top of the panel. It disappears for good once you click it or close it.
+
+### Fixed
+
+- HLS videos in embedded players on other sites could not be downloaded when the video host only accepts requests from the player's page (the download failed with HTTP 403). The extension now sends that page's address as `Referer` and `Origin` for its own requests to the stream's host.
+
 ## [1.0.7]
 
 ### Added

@@ -116,6 +116,21 @@ export function historyThumb(r) {
 
 export const isHistoryQuotaError = (e) => /quota/i.test(String((e && e.message) || e));
 
+/** Parse "v1.2.3" / "1.2.3" into [1,2,3]; null when it is not a plain MAJOR.MINOR.PATCH */
+export function parseVersion(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(v || '').trim());
+  return m ? [+m[1], +m[2], +m[3]] : null;
+}
+
+/** True when version `a` is newer than version `b`; false if either one cannot be parsed */
+export function isNewerVersion(a, b) {
+  const x = parseVersion(a);
+  const y = parseVersion(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+  return false;
+}
+
 export function hostOf(u) {
   try {
     return new URL(u).hostname.replace(/^www\./, '');
