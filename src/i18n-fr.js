@@ -82,9 +82,32 @@ export const FR = {
   'VictorLoad/站点名': 'VictorLoad/nom-du-site',
   '{site} 站点名 · {date} 日期（如 2026-11-08） · {year} 年 · {month} 月。用 / 分隔子文件夹；留空则直接保存到下载文件夹。':
     '{site} nom du site · {date} date (ex. 2026-11-08) · {year} année · {month} mois. Utilisez / pour séparer les sous-dossiers ; laissez vide pour enregistrer directement dans Téléchargements.',
-  'YouTube 优先 H.264': 'Privilégier H.264 sur YouTube',
-  '可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效':
-    'Enregistre l’audio et la vidéo mis en mémoire tampon dans un seul fichier MP4, jusqu’à 1080p. Actualisez la page YouTube après avoir modifié ce réglage.',
+  '当前页面下载模式会让 YouTube 没有 4K':
+    'Le mode « page » masque la 4K sur YouTube',
+  '去设置':
+    'Réglages',
+  'YouTube 下载方式':
+    'Méthode de téléchargement YouTube',
+  '在当前页面下载（默认）':
+    'Télécharger dans la page actuelle (par défaut)',
+  '在新标签页下载':
+    'Télécharger dans un nouvel onglet',
+  '不限制编码':
+    'Aucune limite de codec',
+  '当前页面：页面限制为 H.264，最高 1080p，播放器没有 1440p / 4K，音视频合成一个 mp4。修改后刷新 YouTube 页面生效。':
+    'Page actuelle : la page est limitée à H.264, jusqu’à 1080p. Le lecteur n’a pas de 1440p / 4K. L’audio et la vidéo sont fusionnés dans un seul MP4. Actualisez la page YouTube après la modification.',
+  '新标签页：在后台标签页下载，当前页面不受影响，播放器保留 4K，下载最高 1080p。':
+    'Nouvel onglet : le téléchargement se fait dans un onglet en arrière-plan. La page que vous regardez n’est pas modifiée et garde la 4K. Téléchargements jusqu’à 1080p.',
+  '不限制编码：页面保留 4K，但抓到 VP9 / AV1 时，音频和视频会分成两个文件。':
+    'Aucune limite de codec : la page garde la 4K, mais les captures VP9 / AV1 sont enregistrées en fichiers audio et vidéo séparés.',
+  '后台标签页没有获取到视频数据':
+    'L’onglet en arrière-plan n’a reçu aucune donnée vidéo',
+  '下载方式已更改，请刷新 YouTube 页面。':
+    'La méthode de téléchargement a changé. Actualisez la page YouTube.',
+  '【VL视频下载中】':
+    '[VL téléchargement]',
+  '即将自动切换页面以读取视频':
+    'La page va changer d’onglet un instant pour lire la vidéo',
   '默认分辨率不超过': 'Résolution maximale préférée',
   '已记住的内容类型': 'Types de contenu mémorisés',
 
@@ -180,8 +203,8 @@ export const FR = {
   '杜比视界': 'Dolby Vision',
   '仅音频': 'Audio uniquement',
   // ---- failures the user has to see ----
-  '已达到缓冲上限（1.5 GB），之后的内容没有被记录，保存的文件会不完整。':
-    'La limite de 1,5 Go de mémoire tampon a été atteinte. Les données suivantes n’ont pas été enregistrées, le fichier sera donc incomplet.',
+  '已达到缓冲上限，之后的内容没有被记录，保存的文件会不完整。':
+    'La limite de la mémoire tampon a été atteinte. Les données suivantes n’ont pas été enregistrées, le fichier sera donc incomplet.',
   '有 {n} 个分片无法解析，保存的文件可能缺少这些部分。':
     'Segments vidéo illisibles : {n}. Le fichier enregistré peut être incomplet.',
   '记录分片时出错 {n} 次，保存的文件可能不完整。':

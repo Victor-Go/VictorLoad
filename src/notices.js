@@ -16,6 +16,7 @@ export function siteErrorText(error) {
 /** Expected YouTube capture warm-up is informational, rather than a parsing error. */
 export function videoNotice(item, quality) {
   if (quality?.error) return { text: T(quality.error), error: true };
+  if (item.needsReload) return { text: T('下载方式已更改，请刷新 YouTube 页面。'), error: false };
   if (item.capture) return { text: captureWarning(item.capture), error: true };
   if (!item.qualities?.length && item.waitingForCapture) {
     return { text: T('请先播放视频，几秒后会出现可下载的画质。'), error: false };
@@ -37,7 +38,7 @@ export function videoNotice(item, quality) {
 export function captureWarning(cap) {
   if (!cap) return '';
   const out = [];
-  if (cap.full) out.push(T('已达到缓冲上限（1.5 GB），之后的内容没有被记录，保存的文件会不完整。'));
+  if (cap.full) out.push(T('已达到缓冲上限，之后的内容没有被记录，保存的文件会不完整。'));
   if (cap.rejected > 0) out.push(T('有 {n} 个分片无法解析，保存的文件可能缺少这些部分。', { n: cap.rejected }));
   if (cap.captureErrors > 0) out.push(T('记录分片时出错 {n} 次，保存的文件可能不完整。', { n: cap.captureErrors }));
   return out.join(' ');

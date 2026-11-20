@@ -4,6 +4,20 @@ All notable changes to VictorLoad are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.0.9]
+
+### Added
+
+- Settings → "YouTube download method". **Current page** (default, what earlier versions did), **New tab**: the video is recorded in a background tab that closes by itself, so the YouTube page you watch keeps 1440p / 4K playback (downloads are up to 1080p, merged into one MP4; only heights that exist as H.264 are listed), and **No codec limit** (the old "Prefer H.264" switch turned off).
+- In the current-page method, the panel shows a short notice on YouTube pages that this hides 4K in the player, with a button to the setting.
+
+### Changed
+
+- YouTube recordings are now written to the browser's private storage for the site (OPFS) segment by segment instead of being held in memory. The 1.5 GB limit is gone (it only applies when the browser has no such storage), a tab that is under memory pressure no longer loses the recording, and files above 4 GB are written with 64-bit offsets. The files are deleted when the download ends, and leftovers of a crashed tab are swept when a YouTube page opens.
+- The "Prefer H.264 on YouTube" switch became the download method above. Existing installs keep their behaviour (on = current page, off = no codec limit).
+- The download history is no longer trimmed by the usual 10 MB extension storage quota (new `unlimitedStorage` permission, which shows no install warning).
+- The YouTube page script (`mse.js`) is now registered by the extension for the chosen method instead of being fixed in the manifest. In "New tab" mode it does not run on the pages you watch.
+
 ## [1.0.8]
 
 ### Added

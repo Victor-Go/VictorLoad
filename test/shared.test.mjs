@@ -152,3 +152,12 @@ test('isNewerVersion compares MAJOR.MINOR.PATCH numerically and ignores junk', (
   assert.equal(isNewerVersion('1.0.8-beta', '1.0.7'), false);
   assert.equal(isNewerVersion('', '1.0.7'), false);
 });
+
+test('mergeSettings: the old ytH264 switch becomes ytMode; new installs default to the current page', () => {
+  assert.equal(mergeSettings({}).ytMode, 'page');
+  assert.equal(mergeSettings({ ytH264: true }).ytMode, 'page');
+  assert.equal(mergeSettings({ ytH264: false }).ytMode, 'off');
+  assert.equal(mergeSettings({ ytH264: false, ytMode: 'tab' }).ytMode, 'tab');
+  assert.equal(mergeSettings({ ytMode: 'nonsense' }).ytMode, 'page');
+  assert.ok(!('ytH264' in mergeSettings({ ytH264: true })));
+});

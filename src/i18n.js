@@ -86,9 +86,32 @@ export const EN = {
   'VictorLoad/站点名': 'VictorLoad/site-name',
   '{site} 站点名 · {date} 日期（如 2026-11-08） · {year} 年 · {month} 月。用 / 分隔子文件夹；留空则直接保存到下载文件夹。':
     '{site} site name · {date} date (e.g. 2026-11-08) · {year} year · {month} month. Use / to separate subfolders; leave empty to save straight into the Downloads folder.',
-  'YouTube 优先 H.264': 'Prefer H.264 on YouTube',
-  '可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效':
-    'Save buffered audio and video as one MP4, up to 1080p. Reload the YouTube page after changing this setting.',
+  '当前页面下载模式会让 YouTube 没有 4K':
+    'Page download mode hides 4K on YouTube',
+  '去设置':
+    'Settings',
+  'YouTube 下载方式':
+    'YouTube download method',
+  '在当前页面下载（默认）':
+    'Download in the current page (default)',
+  '在新标签页下载':
+    'Download in a new tab',
+  '不限制编码':
+    'No codec limit',
+  '当前页面：页面限制为 H.264，最高 1080p，播放器没有 1440p / 4K，音视频合成一个 mp4。修改后刷新 YouTube 页面生效。':
+    'Current page: the page is limited to H.264, up to 1080p. The player has no 1440p / 4K. Audio and video merge into one MP4. Reload the YouTube page after changing.',
+  '新标签页：在后台标签页下载，当前页面不受影响，播放器保留 4K，下载最高 1080p。':
+    'New tab: downloads in a background tab. The page you watch is left alone and keeps 4K playback. Downloads are up to 1080p.',
+  '不限制编码：页面保留 4K，但抓到 VP9 / AV1 时，音频和视频会分成两个文件。':
+    'No codec limit: the page keeps 4K, but VP9 / AV1 captures are saved as separate audio and video files.',
+  '后台标签页没有获取到视频数据':
+    'The background tab did not get any video data',
+  '下载方式已更改，请刷新 YouTube 页面。':
+    'The download method changed. Reload the YouTube page.',
+  '【VL视频下载中】':
+    '[VL downloading]',
+  '即将自动切换页面以读取视频':
+    'The page is about to switch tabs for a moment to read the video',
   '默认分辨率不超过': 'Preferred maximum resolution',
   '已记住的内容类型': 'Remembered content patterns',
 
@@ -183,8 +206,8 @@ export const EN = {
   '杜比视界': 'Dolby Vision',
   '仅音频': 'Audio only',
   // ---- failures the user has to see ----
-  '已达到缓冲上限（1.5 GB），之后的内容没有被记录，保存的文件会不完整。':
-    'The 1.5 GB buffer limit was reached. Later data was not recorded, so the saved file will be incomplete.',
+  '已达到缓冲上限，之后的内容没有被记录，保存的文件会不完整。':
+    'The buffer limit was reached. Later data was not recorded, so the saved file will be incomplete.',
   '有 {n} 个分片无法解析，保存的文件可能缺少这些部分。':
     'Unreadable video segments: {n}. The saved file may be incomplete.',
   '记录分片时出错 {n} 次，保存的文件可能不完整。': 'Errors while recording: {n}. The saved file may be incomplete.',
@@ -228,7 +251,8 @@ export function detectLang() {
 /** pref: 'auto' | 'zh' | 'zh-TW' | 'en' | 'fr'; anything else behaves like 'auto' */
 export function setLang(pref) {
   lang = HTML_LANG[pref] ? pref : detectLang();
-  document.documentElement.lang = HTML_LANG[lang];
+  // The background service worker has no document
+  if (typeof document !== 'undefined') document.documentElement.lang = HTML_LANG[lang];
   return lang;
 }
 export const getLang = () => lang;

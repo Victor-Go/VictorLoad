@@ -213,7 +213,19 @@ function switchTab(kind) {
 
 // ---- Rendering ----
 let rafPending = false;
+/** YouTube in "current page" mode: say why the player has no 4K, and offer a way out */
+function updateYtBar() {
+  const host = state?.host || '';
+  const yt = /(^|.)youtube.com$/.test(host) || host === 'youtu.be';
+  $('#ytBar').classList.toggle('hidden', !(yt && S.ytMode === 'page'));
+}
+$('#ytGo').addEventListener('click', () => {
+  show('Settings');
+  $('#ytMode').parentElement.scrollIntoView({ block: 'center' });
+});
+
 function render() {
+  updateYtBar();
   if (rafPending) return;
   rafPending = true;
   requestAnimationFrame(() => {
@@ -387,6 +399,7 @@ function makeVideoCard(first) {
       <div class="title"></div>
       <div class="meta"></div>
       <div class="vrow"><select title="${T('分辨率')}"></select><button class="btn dl"><span class="fill"></span><span class="lbl">${T('下载')}</span></button></div>
+      <div class="vnote hidden">${T('即将自动切换页面以读取视频')}</div>
     </div>`;
   if (freshIds.has(first.id)) {
     el.classList.add('fresh');
@@ -595,13 +608,20 @@ function makeVideoCard(first) {
     select.value = qIndex(it);
     // Progress of a captured stream is drawn as the dropdown's background fill
     const selectedQuality = it.qualities?.[qIndex(it)];
-    const isCaptureQuality = selectedQuality?.type === 'capture';
+    const tabState = dl.get(it.id);
+    const isTabJob = selectedQuality?.type === 'tab' && tabState?.state === 'buffering'; // recorded in a background tab
+    const isCaptureQuality = selectedQuality?.type === 'capture' || isTabJob;
     select.classList.toggle('capsel', isCaptureQuality);
-    select.style.setProperty('--p', isCaptureQuality ? Math.round((selectedQuality.cov || 0) * 100) + '%' : '0%');
+    select.style.setProperty(
+      '--p',
+      (isTabJob ? tabState.pct || 0 : isCaptureQuality ? Math.round((selectedQuality.cov || 0) * 100) : 0) + '%',
+    );
     select.disabled = (it.qualities?.length || 0) <= 1;
     cb.checked = isSel(it);
     el.classList.toggle('is-done', isDone(it));
     const d = dl.get(it.id);
+    $('.vnote', el).classList.toggle('hidden', !d?.switching);
+    $('.vbody', el).classList.toggle('has-note', !!d?.switching);
     // A captured stream that isn't fully buffered gets "Auto download": fill the gaps, then save
     const needsAutoDownload =
       selectedQuality?.type === 'capture' && (selectedQuality.cov < 0.98 || selectedQuality.holes > 0);
@@ -729,7 +749,7 @@ async function download(entries) {
   // Incomplete captures are buffered first (the page does it); everything else is queued
   const isAuto = (e) => {
     const q = e.it.qualities?.[e.q];
-    return q?.type === 'capture' && !e.force && (q.cov < 0.98 || q.holes > 0);
+    return !e.force && (q?.type === 'tab' || (q?.type === 'capture' && (q.cov < 0.98 || q.holes > 0)));
   };
   for (const e of entries) {
     const q = e.it.qualities?.[e.q];
@@ -1132,6 +1152,8 @@ const isHttp = (u) => /^https?:/i.test(u || '');
 
 async function setActive(tab) {
   if (!tab) return;
+  // The tab VictorLoad opens for a download is in front for a moment: it is not a page to list
+  if (/[?&]vl_dl=1(&|$)/.test(tab.pendingUrl || tab.url || '')) return;
   supported = isHttp(tab.url);
   faviconUrl = supported ? tab.favIconUrl || '' : '';
   render();

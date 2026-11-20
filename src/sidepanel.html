@@ -44,6 +44,12 @@
         </button>
       </header>
 
+      <div id="ytBar" class="starbar update hidden">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span class="txt" id="ytBarTxt">当前页面下载模式会让 YouTube 没有 4K</span>
+        <button id="ytGo" class="go">去设置</button>
+      </div>
+
       <div class="switch">
         <button class="tab" data-tab="video">
           <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg>
@@ -200,10 +206,17 @@
             </p>
             <div class="example"><span>示例</span><code id="pathPreview"></code></div>
           </div>
-          <label class="switchrow">
-            <span><b>YouTube 优先 H.264</b><em>可把缓冲的音视频合并成单个 mp4，最高 1080p。修改后刷新 YouTube 页面生效</em></span>
-            <input type="checkbox" class="toggle" data-s="ytH264" />
-          </label>
+          <div class="ytmode">
+            <h3>YouTube 下载方式</h3>
+            <select id="ytMode" data-s="ytMode" data-dd aria-label="YouTube 下载方式">
+              <option value="page">在当前页面下载（默认）</option>
+              <option value="tab">在新标签页下载</option>
+              <option value="off">不限制编码</option>
+            </select>
+            <p class="hint">当前页面：页面限制为 H.264，最高 1080p，播放器没有 1440p / 4K，音视频合成一个 mp4。修改后刷新 YouTube 页面生效。</p>
+            <p class="hint">新标签页：在后台标签页下载，当前页面不受影响，播放器保留 4K，下载最高 1080p。</p>
+            <p class="hint">不限制编码：页面保留 4K，但抓到 VP9 / AV1 时，音频和视频会分成两个文件。</p>
+          </div>
           <label class="field"><span>默认分辨率不超过</span><span class="inp"><input type="number" min="0" data-s="prefHeight" /><em>p</em></span></label>
         </section>
 

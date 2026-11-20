@@ -16,6 +16,7 @@ import {
   isHistoryQuotaError,
   isNewerVersion,
 } from './shared.js';
+import { T, setLang } from './i18n.js';
 import { siteOf, extractSite, hasVideoExtractor } from './sites.js';
 import { parseM3U8, EXTERNAL_AUDIO_ERROR } from './hlsparse.js';
 
@@ -28,13 +29,14 @@ let loaded = null;
 
 function load() {
   return (loaded ||= (async () => {
-    const s = await chrome.storage.session.get(['tabsState', 'pending', 'captureJobs', 'hlsJobs']);
+    const s = await chrome.storage.session.get(['tabsState', 'pending', 'captureJobs', 'hlsJobs', 'dlTabs']);
     for (const [k, v] of Object.entries(s.tabsState || {})) {
       tabs.set(+k, { frames: {}, sizes: {}, netImgs: {}, net: {}, site: null, pageUrl: '', title: '', ...v });
     }
     pending = s.pending || {};
     for (const [k, v] of Object.entries(s.hlsJobs || {})) jobs.set(k, v);
     for (const [k, v] of Object.entries(s.captureJobs || {})) captureJobs.set(k, v);
+    for (const [k, v] of Object.entries(s.dlTabs || {})) dlTabs.set(k, v);
     const { history = [] } = await chrome.storage.local.get('history');
     rebuildDk(history);
   })());
@@ -135,6 +137,7 @@ function stripQuery(u) {
 
 function qKey(q) {
   if (q.type === 'capture') return 'cap:' + q.vgid + ':' + q.agid;
+  if (q.type === 'tab') return 'tab:' + q.height;
   return normKey(q.type === 'hls' || /\.(mp4|webm|m3u8|flv|mov)$/i.test(stripQuery(q.url)) ? stripQuery(q.url) : q.url);
 }
 
@@ -198,6 +201,8 @@ function buildState(tabId) {
     }
   }
   for (const v of vids.values()) {
+    // Nothing to offer after a mode change: the open page still lacks what the new mode needs, and only a reload fixes that
+    if (t.needsReload && !v.qualities.length) v.needsReload = true;
     if (!v.size) v.size = t.sizes[v.qualities[0]?.url] || 0;
     v.qualities.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
   }
@@ -251,6 +256,11 @@ async function maybeExtract(tabId, t) {
     return;
   }
   if (t.site && t.site.url === t.pageUrl) return;
+  // The tab opened for a download needs no extraction of its own
+  if (isDlUrl(t.pageUrl)) {
+    t.site = null;
+    return;
+  }
   const url = t.pageUrl;
   const request = { url, items: [], loading: true, error: '' };
   t.site = request;
@@ -258,7 +268,7 @@ async function maybeExtract(tabId, t) {
   let items = [];
   let error = '';
   try {
-    items = await extractSite(site, url);
+    items = await extractSite(site, url, { ytMode: (await getSettings()).ytMode });
   } catch (e) {
     error = String(e.message || e);
   }
@@ -266,6 +276,48 @@ async function maybeExtract(tabId, t) {
   if (!cur || cur.site !== request) return;
   cur.site = { url, items, loading: false, error };
   schedule(tabId);
+  const yt = items[0];
+  if (site === 'youtube' && yt && !yt.formatsListed && !yt.qualities.some((q) => q.type === 'tab')) {
+    const S = await getSettings();
+    if (S.ytMode === 'tab') await addPlayerQualities(tabId, cur.site, yt);
+  }
+}
+
+// YouTube often refuses to list formats without a PO token. In "new tab" mode the page has no scripts of ours, so ask its
+// player (a read-only call) which quality levels the video has. The player needs a moment after the page loads.
+const PLAYER_LEVEL_H = { hd1080: 1080, hd720: 720, large: 480, medium: 360, small: 240, tiny: 144 };
+async function readPlayerLevels(tabId) {
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        try {
+          const p = document.getElementById('movie_player');
+          return (p && p.getAvailableQualityLevels && p.getAvailableQualityLevels()) || [];
+        } catch {
+          return [];
+        }
+      },
+    });
+    return Array.isArray(r?.result) ? r.result : [];
+  } catch {
+    // The tab is gone or cannot be scripted
+    return [];
+  }
+}
+async function addPlayerQualities(tabId, site, item) {
+  for (let i = 0; i < 20; i++) {
+    const heights = [...new Set((await readPlayerLevels(tabId)).map((l) => PLAYER_LEVEL_H[l]).filter(Boolean))];
+    if (tabs.get(tabId)?.site !== site) return; // another page, or the mode changed: this answer is stale
+    if (heights.length) {
+      for (const h of heights) item.qualities.push({ label: h + 'p', height: h, type: 'tab', ext: 'mp4', size: 0 });
+      item.waitingForCapture = false;
+      schedule(tabId);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 // ---- Content script messages ----
@@ -361,6 +413,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return buildState(msg.tabId);
       }
       case 'capture-ctl':
+        if (msg.cmd === 'fill-stop' && dlItemOf(msg.tabId) !== undefined) {
+          // The recording runs in a background tab that may not have started yet: closing it is the cancel
+          cancelDlTab(dlItemOf(msg.tabId));
+          return { ok: true };
+        }
         try {
           const reply = await withTimeout(
             chrome.tabs.sendMessage(msg.tabId, { type: 'cap-ctl', cmd: msg.cmd, requestId: uid() }, { frameId: 0 }),
@@ -404,6 +461,7 @@ chrome.webNavigation.onCommitted.addListener((d) => {
     t.sizes = {};
     t.netImgs = {};
     t.site = null;
+    t.needsReload = false; // a new document runs the scripts of the current mode
     t.excluded = null; // a reload (or any new document) brings every item back
     t.pageUrl = d.url;
     t.title = '';
@@ -737,6 +795,176 @@ function recordKeys(item, q) {
 
 const captureJobs = new Map(); // YouTube segment-capture save jobs
 
+// ---- YouTube "new tab" downloads ----
+// The video is recorded in a background tab (H.264 + AAC, see gate.js and mse.js) so the tab you watch is left alone.
+const DL_PARAM = /[?&]vl_dl=1(&|$)/;
+function isDlUrl(u) {
+  try {
+    return DL_PARAM.test(new URL(u).search);
+  } catch {
+    return false;
+  }
+}
+// The download tab is shown once the page has loaded (Chrome limits what a page that was never visible may play),
+// for this long, and then the tab you were on comes back
+const DL_FOCUS_MS = 400;
+const DL_LOAD_WAIT_MS = 20000; // how long to wait for the page to load before showing the tab anyway
+
+function waitTabLoaded(tabId, ms) {
+  return new Promise((resolve) => {
+    const done = () => {
+      resolve();
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
+    const onUpdated = (id, info) => {
+      if (id === tabId && info.status === 'complete') done();
+    };
+    const timer = setTimeout(done, ms);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.get(tabId).then((t) => t?.status === 'complete' && done(), done);
+  });
+}
+const dlTabs = new Map(); // item id -> { tabId, srcTabId }
+const dlWatchdogs = new Map(); // item id -> timer that gives up on a tab that never reports
+function dlItemOf(srcTabId) {
+  for (const [itemId, d] of dlTabs) if (d.srcTabId === srcTabId) return itemId;
+  return undefined;
+}
+function cancelDlTab(itemId) {
+  for (const [jobId, j] of captureJobs) {
+    if (j.itemId === itemId) captureJobs.delete(jobId);
+  }
+  saveCapJobs();
+  closeDlTab(itemId);
+  emit({ type: 'dl', id: itemId, state: 'cancelled' });
+}
+function saveDlTabs() {
+  chrome.storage.session
+    .set({ dlTabs: Object.fromEntries(dlTabs) })
+    .catch((e) => console.warn('[VictorLoad] could not save download tabs', e));
+}
+function closeDlTab(itemId, afterSave = false) {
+  const d = dlTabs.get(itemId);
+  if (!d) return;
+  dlTabs.delete(itemId);
+  saveDlTabs();
+  clearTimeout(dlWatchdogs.get(itemId));
+  dlWatchdogs.delete(itemId);
+  const close = async () => {
+    try {
+      // The tab keeps the recorded segments in files on disk: have it delete them before it goes
+      await withTimeout(
+        chrome.tabs.sendMessage(d.tabId, { type: 'cap-ctl', cmd: 'cleanup', requestId: uid() }, { frameId: 0 }),
+        4000,
+      );
+    } catch {
+      // The tab is gone or never answered; the next YouTube page sweeps leftovers
+    }
+    chrome.tabs.remove(d.tabId).catch(() => {
+      // Already closed by the user: nothing to clean up
+    });
+  };
+  if (!afterSave) return close();
+  // The file is a blob the tab hands to the browser: closing the tab before the browser has read it would cut the download
+  let n = 0;
+  const wait = async () => {
+    let busy = false;
+    try {
+      busy = (await chrome.downloads.search({ state: 'in_progress', urlRegex: '^blob:https://www.youtube.com' })).length > 0;
+    } catch {
+      // Cannot ask: fall back to closing after the first check
+    }
+    if (busy && ++n < 600) setTimeout(wait, 1000);
+    else close();
+  };
+  setTimeout(wait, 1500);
+}
+
+async function downloadInTab(srcTabId, item, q, base, record, force) {
+  const id = item.id;
+  const jobId = uid();
+  const existing = dlTabs.get(id);
+  if (existing && force) {
+    // "Save anyway" after some parts could not be recorded: the tab is still open with what it has
+    captureJobs.set(jobId, { itemId: id, record, seen: false });
+    saveCapJobs();
+    await chrome.tabs.sendMessage(
+      existing.tabId,
+      { type: 'cap-save', jobId, auto: false, vgid: '', agid: '', name: base },
+      { frameId: 0 },
+    );
+    return;
+  }
+  closeDlTab(id);
+  const vid = String(id).replace(/^yt:/, '');
+  // The marker shown in the tab's title is in the language chosen in the extension's settings
+  setLang((await getSettings()).uiLang);
+  const url =
+    'https://www.youtube.com/watch?v=' + encodeURIComponent(vid) + '&vl_dl=1&vl_h=' + (q.height | 0) + '&vl_job=' + jobId + '&vl_name=' + encodeURIComponent(base) + '&vl_tag=' + encodeURIComponent(T('【VL视频下载中】'));
+  captureJobs.set(jobId, { itemId: id, record, seen: false });
+  saveCapJobs();
+  // `switching` makes the panel say that the page is about to change tabs for a moment
+  emit({ type: 'dl', id, state: 'buffering', pct: 0, switching: true });
+  let windowId;
+  try {
+    windowId = (await chrome.tabs.get(srcTabId)).windowId;
+  } catch {
+    // The tab is gone: open the new one wherever Chrome puts it
+  }
+  const tab = await chrome.tabs.create({ url, active: false, windowId });
+  dlTabs.set(id, { tabId: tab.id, srcTabId });
+  saveDlTabs();
+  // Silent from the first moment: the tab is muted before its page has loaded, so no sound can come out of it
+  chrome.tabs.update(tab.id, { muted: true }).catch(() => {
+    // The tab is already gone
+  });
+  // Show the tab for a moment once its page has loaded, then bring back the tab you are on
+  await waitTabLoaded(tab.id, DL_LOAD_WAIT_MS);
+  if (dlTabs.get(id)?.tabId === tab.id) {
+    let back = srcTabId;
+    try {
+      back = (await chrome.tabs.query({ active: true, windowId }))?.[0]?.id ?? srcTabId;
+    } catch {
+      // Keep the tab the download was started from
+    }
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    await new Promise((r) => setTimeout(r, DL_FOCUS_MS));
+    chrome.tabs.update(back, { active: true }).catch(() => {
+      // The tab you were on was closed meanwhile: leave the new tab in front
+    });
+    emit({ type: 'dl', id, state: 'buffering', pct: 0 });
+  }
+  // The tab's own script reports progress. If it never does (blocked page, no video), give up and close it.
+  dlWatchdogs.set(
+    id,
+    setTimeout(() => {
+      const j = captureJobs.get(jobId);
+      if (j && !j.seen) {
+        captureJobs.delete(jobId);
+        saveCapJobs();
+        closeDlTab(id);
+        emit({ type: 'dl', id, state: 'error', msg: '后台标签页没有获取到视频数据' });
+      }
+    }, 150000),
+  );
+}
+
+chrome.tabs.onRemoved.addListener((closedId) => {
+  for (const [itemId, d] of dlTabs) {
+    if (d.tabId !== closedId) continue;
+    dlTabs.delete(itemId);
+    saveDlTabs();
+    // Closed by the user (or crashed) while the job was running
+    for (const [jobId, j] of captureJobs) {
+      if (j.itemId !== itemId) continue;
+      captureJobs.delete(jobId);
+      saveCapJobs();
+      emit({ type: 'dl', id: itemId, state: 'cancelled' });
+    }
+  }
+});
+
 function saveCapJobs() {
   chrome.storage.session
     .set({ captureJobs: Object.fromEntries(captureJobs) })
@@ -764,6 +992,7 @@ async function onCapResult(msg) {
     return;
   }
   j.seen = true;
+  if (['cancelled', 'done', 'error'].includes(msg.state)) closeDlTab(j.itemId, msg.state === 'done');
   if (msg.state === 'progress') emit({ type: 'dl', id: j.itemId, state: 'progress', pct: msg.pct || 0 });
   else if (msg.state === 'buffering') emit({ type: 'dl', id: j.itemId, state: 'buffering', pct: msg.pct || 0 });
   else if (msg.state === 'stuck') {
@@ -859,6 +1088,10 @@ async function downloadOne(S, host, pageUrl, item, qi, tabId, tabTitle, force) {
     keys: recordKeys(item, q),
   };
 
+  if (q.type === 'tab') {
+    await downloadInTab(tabId, item, q, base, record, force);
+    return;
+  }
   if (q.type === 'capture') {
     // mse.js (running in the page) assembles the buffered segments and saves the file itself
     const jobId = uid();
@@ -1045,8 +1278,19 @@ chrome.storage.onChanged.addListener((ch, area) => {
     broadcastRescan();
   }
   if (area === 'local' && ch.settings) {
+    if (mergeSettings(ch.settings.oldValue).ytMode !== mergeSettings(ch.settings.newValue).ytMode) {
+      // The YouTube qualities on offer depend on the download mode: read them again. A page that is already
+      // open keeps the scripts it was loaded with until it is reloaded.
+      for (const [id, t] of tabs) {
+        if (siteOf(t.pageUrl) === 'youtube') {
+          t.needsReload = true;
+          t.site = null;
+          maybeExtract(id, t);
+        }
+      }
+    }
     broadcastRescan();
-    syncH264();
+    syncYtScripts();
     syncUiMode();
   }
 });
@@ -1068,30 +1312,43 @@ chrome.runtime.onInstalled.addListener(syncUiMode);
 chrome.runtime.onStartup.addListener(syncUiMode);
 syncUiMode();
 
-// ---- YouTube: optional "H.264 only" script registration ----
+// ---- YouTube scripts (MAIN world, document_start), registered for the chosen download mode ----
+//  page: h264.js limits the page itself to H.264 and mse.js records what the player gets
+//  tab:  gate.js lets h264.js and mse.js run only in the background tab opened for a download (see downloadInTab)
+//  off:  only mse.js, so the page keeps VP9/AV1 and 4K
 // Runs are queued: install, startup and a settings change can fire together and would register the script twice
-let h264Queue = Promise.resolve();
-const syncH264 = () => (h264Queue = h264Queue.then(syncH264Now));
-async function syncH264Now() {
+const YT_SCRIPTS = {
+  page: ['src/h264.js', 'src/mse.js'],
+  tab: ['src/gate.js', 'src/h264.js', 'src/mse.js'],
+  off: ['src/mse.js'],
+};
+let ytQueue = Promise.resolve();
+const syncYtScripts = () => (ytQueue = ytQueue.then(syncYtScriptsNow));
+async function syncYtScriptsNow() {
   try {
     const S = await getSettings();
-    const reg = await chrome.scripting.getRegisteredContentScripts({ ids: ['vl-h264'] });
-    if (S.ytH264 && !reg.length) {
+    const js = YT_SCRIPTS[S.ytMode] || YT_SCRIPTS.page;
+    // 'vl-h264' is what 1.0.8 and earlier registered
+    const reg = await chrome.scripting.getRegisteredContentScripts({ ids: ['vl-yt', 'vl-h264'] });
+    const cur = reg.find((r) => r.id === 'vl-yt');
+    if (reg.some((r) => r.id === 'vl-h264')) await chrome.scripting.unregisterContentScripts({ ids: ['vl-h264'] });
+    if (cur && cur.js.join() !== js.join()) {
+      // Replaced in one step, so there is never a moment with no script registered
+      await chrome.scripting.updateContentScripts([{ id: 'vl-yt', js }]);
+    } else if (!cur) {
       await chrome.scripting.registerContentScripts([
         {
-          id: 'vl-h264',
+          id: 'vl-yt',
           matches: ['*://*.youtube.com/*'],
-          js: ['src/h264.js'],
+          js,
           runAt: 'document_start',
           world: 'MAIN',
           persistAcrossSessions: true,
         },
       ]);
-    } else if (!S.ytH264 && reg.length) {
-      await chrome.scripting.unregisterContentScripts({ ids: ['vl-h264'] });
     }
   } catch (e) {
-    console.warn('[VictorLoad] could not update the YouTube H.264 script', e);
+    console.warn('[VictorLoad] could not update the YouTube scripts', e);
   }
 }
 // Tabs that were open before an install or update don't have the content script yet, so add it.
@@ -1109,9 +1366,9 @@ async function injectExisting() {
   }
 }
 chrome.runtime.onInstalled.addListener(injectExisting);
-chrome.runtime.onInstalled.addListener(syncH264);
-chrome.runtime.onStartup.addListener(syncH264);
-syncH264();
+chrome.runtime.onInstalled.addListener(syncYtScripts);
+chrome.runtime.onStartup.addListener(syncYtScripts);
+syncYtScripts();
 
 // ---- HLS (offscreen) ----
 const HLS_ALARM = 'victorload-hls-watchdog';

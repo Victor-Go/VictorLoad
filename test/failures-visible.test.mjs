@@ -163,7 +163,6 @@ test('hitting the buffer limit is reported instead of silently stopping', async 
   assert.equal(item.capture.full, true);
   const text = captureWarning(item.capture);
   assert.match(text, /已达到缓冲上限/);
-  assert.match(text, /1\.5 GB/);
 });
 
 test('the warning is translated', async () => {

@@ -18,9 +18,9 @@ export function hasVideoExtractor(pageUrl) {
   return siteOf(pageUrl) !== null;
 }
 
-export async function extractSite(site, pageUrl) {
+export async function extractSite(site, pageUrl, opts = {}) {
   if (site === 'bilibili') return extractBilibili(pageUrl);
-  if (site === 'youtube') return extractYouTube(pageUrl);
+  if (site === 'youtube') return extractYouTube(pageUrl, opts);
   return [];
 }
 
@@ -160,7 +160,7 @@ function ytVideoId(pageUrl) {
   return m ? m[2] : null;
 }
 
-async function extractYouTube(pageUrl) {
+async function extractYouTube(pageUrl, opts = {}) {
   const vid = ytVideoId(pageUrl);
   if (!vid) return [];
   let resp = null;
@@ -245,6 +245,27 @@ async function extractYouTube(pageUrl) {
       size: +f.contentLength || 0,
     });
   }
+  if (opts.ytMode === 'tab') {
+    // "New tab" mode: the page is not recorded, so offer every height a background tab can record as H.264 + AAC.
+    // The direct links are not needed for that (they often are not there), only the formats' existence.
+    const all = sd.adaptiveFormats || [];
+    const hasAac = all.some((f) => /^audio\/mp4/.test(f.mimeType || ''));
+    const heights = new Set();
+    for (const f of all) {
+      if (/^video\/mp4/.test(f.mimeType || '') && /avc1/.test(f.mimeType) && f.height > 0 && f.height <= 1080) {
+        heights.add(f.height);
+      }
+    }
+    if (hasAac) {
+      for (let i = qualities.length - 1; i >= 0; i--) {
+        const q = qualities[i];
+        if (q.type === 'split' || (q.type === 'direct' && heights.has(q.height))) qualities.splice(i, 1);
+      }
+      for (const h of heights) {
+        qualities.push({ label: `${h}p`, height: h, type: 'tab', ext: 'mp4', size: 0 });
+      }
+    }
+  }
   if (sd.hlsManifestUrl) {
     qualities.push({ label: 'HLS 直播/清单', height: 0, url: sd.hlsManifestUrl, ext: 'ts', type: 'hls' });
   }
@@ -267,7 +288,9 @@ async function extractYouTube(pageUrl) {
       posterOnly: true,
       keys: ['yt:' + vid, pageKeyOf(pageUrl), normKey(`https://i.ytimg.com/vi/${vid}/hqdefault.jpg`)],
       qualities,
-      waitingForCapture: !qualities.length,
+      // Whether YouTube listed any formats at all: when it did not (it often refuses without a PO token), the caller may ask the player
+      formatsListed: !!(sd.adaptiveFormats || []).length,
+      waitingForCapture: !qualities.length && opts.ytMode !== 'tab',
       error: '',
     },
   ];

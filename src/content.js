@@ -6,6 +6,8 @@
 
   const HOST = location.hostname;
   const IS_TW = /(^|\.)(x|twitter)\.com$/.test(HOST);
+  // The download tab (see mse.js) puts a [VL ...] marker in front of the title: it is not part of the video's name
+  const cleanTitle = () => document.title.replace(/^[【[]VL[^】\]]*[】\]]\s*/, '');
   const IS_YT = /(^|\.)youtube\.com$/.test(HOST);
   const IS_PAGE_SITE = /(^|\.)(bilibili|youtube)\.com$/.test(HOST) || HOST === 'youtu.be';
   const IMG_EXT = /\.(jpe?g|png|webp|gif|avif|bmp)(\?|#|$)/i;
@@ -269,7 +271,7 @@
       badgeCandidates.push({ el: v, keys, quick: !IS_YT && r.width >= 200 });
       out.push({
         source: 'dom',
-        title: document.title,
+        title: cleanTitle(),
         thumb: v.poster ? abs(v.poster) : '',
         w: v.videoWidth || 0,
         h: vh,
@@ -412,7 +414,7 @@
     const videos = collectVideos();
     const site = [...collectTwitter(), ...collectCapture()];
     const keys = [...new Set(badgeCandidates.flatMap((c) => c.keys))];
-    const payload = { type: 'scan', pageUrl: location.href, title: document.title, images, videos, site, keys };
+    const payload = { type: 'scan', pageUrl: location.href, title: cleanTitle(), images, videos, site, keys };
     const s = JSON.stringify(payload);
     if (s === lastPayload && !forced) {
       applyBadges();
@@ -600,7 +602,7 @@
           holes,
           gaps,
           pageUrl: location.href,
-          title: document.title,
+          title: cleanTitle(),
         });
       } catch (err) {
         // Catches synchronous send failures only. Async delivery failures remain a known issue.

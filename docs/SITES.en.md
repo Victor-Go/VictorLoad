@@ -13,10 +13,10 @@ YouTube restricts direct stream URLs through mechanisms such as PO tokens, signa
 Good to know:
 
 - The progress counts **position**, not just minutes: if you scrub around and leave a hole in the middle, it is detected and listed (hover the dropdown to see where).
-- **Prefer H.264 on YouTube** (Settings, on by default) makes the player use H.264 + AAC, so audio and video merge into **one standard MP4** (up to 1080p). Turn it off to allow VP9 / AV1 (for example 4K, if you pick it in the player); audio and video are then saved as two files.
+- **YouTube download method** (Settings) has three choices. **Current page** (default) limits the page to H.264 + AAC, so audio and video merge into **one standard MP4** (up to 1080p), but the player then has no 1440p / 4K. **New tab** does the same in a background tab that closes by itself, so the page you watch keeps 4K playback (downloads are up to 1080p; only heights that exist as H.264 are listed). **No codec limit** leaves the page alone; VP9 / AV1 captures (for example 4K) are saved as two files.
 - For a different quality, pick it in the player first, then buffer.
 - The file is saved by the page, into the browser's default downloads folder (not the `VictorLoad/<site>/` subfolder).
-- Buffered data lives in memory (about 1.5 GB cap). H.264 + AAC captures are saved as a standard MP4 (`ftyp` + `moov` + `mdat`).
+- Recorded segments are written to the browser's private storage for the site (OPFS) as they arrive, one small file each, so memory stays flat and long videos (5 GB and more) work; the disk space is freed when the download ends, and leftovers of a crashed tab are swept the next time a YouTube page opens. If the browser has no such storage, they stay in memory instead (about 1.5 GB cap). H.264 + AAC captures are saved as a standard MP4 (`ftyp` + `moov` + `mdat`); above 4 GB the file uses 64-bit offsets (`co64`).
 - After installing or updating the extension, **reload the YouTube tab** so the page script is injected again.
 
 ## X (Twitter)

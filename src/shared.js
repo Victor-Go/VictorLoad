@@ -17,7 +17,11 @@ export const DEFAULTS = {
   // Folder (inside the browser's Downloads folder) to save into. Placeholders: {site} {date} {year} {month}.
   // Empty = the Downloads folder itself.
   savePath: 'VictorLoad/{site}/',
-  ytH264: true, // prefer H.264+AAC on YouTube so captured audio/video can be muxed into one mp4 (1080p max)
+  // How YouTube videos are downloaded:
+  //  'page' - the page itself is limited to H.264+AAC so the buffered audio/video merge into one mp4 (the player loses 1440p/4K)
+  //  'tab'  - a background tab does the same, the page you watch is left alone (downloads are 1080p max)
+  //  'off'  - the page is untouched; VP9/AV1 captures are saved as separate video and audio files
+  ytMode: 'page',
   // File name template. Placeholders: {title} {tab} {name} {duration} {resolution}
   nameFormat: '{title}',
   // Bumped when a default changes meaning; stored settings below it get migrated in mergeSettings
@@ -43,6 +47,10 @@ export function mergeSettings(stored) {
   if (st.prefHeight === 1080 && !st.prefHeightUser) delete st.prefHeight;
   // The old default {tab} was never a choice: move it to {title}. Once the version is stamped, {tab} is respected.
   if (!st.nameFormatV && st.nameFormat === '{tab}') delete st.nameFormat;
+  // ytH264 (on/off) became ytMode: on = 'page' (what it did), off = 'off'
+  if (st.ytMode === undefined && st.ytH264 !== undefined) st.ytMode = st.ytH264 ? 'page' : 'off';
+  delete st.ytH264;
+  if (!['page', 'tab', 'off'].includes(st.ytMode)) delete st.ytMode;
   return { ...DEFAULTS, ...st };
 }
 

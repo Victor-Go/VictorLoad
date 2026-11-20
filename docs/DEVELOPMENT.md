@@ -22,7 +22,7 @@ manifest.json, _locales/, icons/, rules/     extension manifest, localized descr
 src/background.js     service worker: state, network sniffing, downloads, history
 src/content.js        page scan, green checks            src/inject.js   X API hook (MAIN world)
 src/mse.js            YouTube segment capture, gap fill, MP4 assembly (MAIN world)
-src/h264.js           optional "H.264 only" switch for YouTube (MAIN world)
+src/h264.js           "H.264 only" switch for YouTube (MAIN world); src/gate.js limits it and mse.js to the download tab
 src/sites.js          Bilibili / YouTube extractors      src/hlsparse.js m3u8 parser
 src/offscreen.*       HLS segment merging                src/sidepanel.*  UI
 src/mp4flat.js        fragmented MP4 -> standard MP4
@@ -40,7 +40,7 @@ test/, scripts/       unit tests, build and release tooling
 - Chinese text uses full-width punctuation (，。：；？！「」（）).
 - Tests that load `src/background.js` use `test/helpers/fake-chrome.mjs`, a strict fake: a `chrome.*` call the test did not list throws, so an API typo or a new call fails the test.
 - Handle errors or show them in the panel. If a failure is expected and safe to ignore, explain why in a comment. For Promise-based APIs, handle rejections as well as synchronous exceptions.
-- `src/*.js` that run in the page (`content.js`, `inject.js`, `mse.js`, `h264.js`) are classic scripts; the others are ES modules.
+- `src/*.js` that run in the page (`content.js`, `inject.js`, `mse.js`, `h264.js`, `gate.js`) are classic scripts; the others are ES modules.
 
 ## Manual, in-browser checks (`dev/`)
 

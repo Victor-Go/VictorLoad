@@ -1,6 +1,6 @@
 # Privacy policy
 
-_Last updated: 2026-11-17_
+_Last updated: 2026-11-19_
 
 [简体中文](PRIVACY.md)
 
@@ -16,6 +16,7 @@ All of this stays on your device, in the browser's extension storage:
 | Download history (title, page address, file name, quality, thumbnail address, time) | To show the history list and put green checks on downloaded items | `storage.local` |
 | Remembered tag structures (per site) | To pre-select the kind of content you usually download | `storage.local` |
 | Sniffed items of open tabs, in-flight download jobs | To keep the list while the service worker sleeps | `storage.session` (cleared when the browser closes) |
+| Segments of a YouTube video while it is being saved | To build the file without holding it all in memory | The site's private browser storage (OPFS) on your device; deleted when the download ends, and leftovers of a crashed tab are removed when a YouTube page next opens |
 
 You can delete history and remembered tag structures at any time in the extension's panel. Uninstalling the extension removes everything.
 
@@ -38,12 +39,13 @@ The extension loads no remote code. The only third-party library, hls.js (for HL
 | `webRequest` | Read-only: notices media responses (mp4, m3u8 …) so videos that are not in the page's HTML can be listed. Requests are never blocked or changed by it |
 | `downloads` | Saves files and reads their final name for the history |
 | `storage` | Settings, history and remembered tag structures |
+| `unlimitedStorage` | Keeps the download history from being trimmed by the usual 10 MB extension quota. |
 | `alarms` | Checks active HLS jobs, recovers lost completion messages and reports connection failures, and schedules the daily update check |
 | `tabs`, `webNavigation` | Reads the active tab's title and address (for the file name and the site name) and resets the list when you navigate |
 | `sidePanel` | Shows the side panel |
 | `offscreen` | Merges HLS segments into one file in a hidden document |
 | `declarativeNetRequest` | Adds the `Referer` / `Origin` headers described above to the extension's own requests |
-| `scripting` | Injects the page script into tabs that were open before the extension was installed or updated, and registers the optional "H.264 only" script for YouTube |
+| `scripting` | Injects the page script into tabs that were open before the extension was installed or updated, and registers the YouTube page scripts for the chosen download method |
 
 ## Children
 

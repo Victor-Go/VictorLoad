@@ -111,7 +111,7 @@ Free and open source (MIT). There is no backend service, and no usage data is se
 
 **Can it download 4K from YouTube?**
 
-By default it records H.264 streams (up to 1080p) so audio and video merge into one MP4. Turn that option off in Settings to capture VP9 / AV1 qualities offered by the player, including 4K where available; audio and video are then saved as two files.
+Not as a single file. By default it records H.264 streams (up to 1080p) so audio and video merge into one MP4, which hides 1440p / 4K in the YouTube player. In Settings, "Download in a new tab" records in a background tab instead and leaves the player alone, and "No codec limit" captures the VP9 / AV1 qualities the player offers, including 4K; audio and video are then saved as two files.
 
 **What if a site stops working?**
 

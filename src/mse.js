@@ -8,11 +8,92 @@
 
   // Read once at document_start, before any page script runs. The override exists so tests can reach the limit.
   const MAX_BYTES = +window.__vlMseMaxBytes || 1.5e9;
+  // Files whose data reaches this size use 64-bit chunk offsets (co64); the override lets a test reach it
+  const BIG_AT = +window.__vlMseBigAt || 0xffffffff;
   let total = 0;
   let gseq = 0;
+  let segSeq = 0;
   const groups = new Map(); // gid -> group
   const sourceBuffers = new WeakMap(); // SourceBuffer -> {mime, kind, cur, vid}
   const post = (d) => window.postMessage({ __victorload: 1, ...d }, '*');
+
+  // ---- Disk store (origin-private file system) ----
+  // Segments are written to disk as they arrive, so memory does not grow with the video and a 5 GB video is
+  // possible. Each segment is its own small file: a file written with createWritable only exists once it is closed,
+  // so one big file would lose everything when the tab crashes. Without OPFS (or once a write fails) segments stay in
+  // memory and MAX_BYTES applies.
+  const DISK_MAX = 200e9; // the browser's storage quota is the real limit; a failed write switches to memory
+  const SESSION = 's' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  let diskDir = null;
+  let diskState = 'init'; // 'init' | 'on' | 'off'
+  let diskFull = false;
+  const lockName = (n) => 'victorload-' + n;
+  const diskReady = (async () => {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) throw new Error('no OPFS');
+      const root = await navigator.storage.getDirectory();
+      const base = await root.getDirectoryHandle('victorload', { create: true });
+      // Hold a lock for as long as this page lives: a session without a holder was left by a closed or crashed tab
+      if (navigator.locks) {
+        navigator.locks.request(lockName(SESSION), () => new Promise(() => {}));
+        const held = new Set(((await navigator.locks.query()).held || []).map((l) => l.name));
+        for await (const [name] of base.entries()) {
+          if (name !== SESSION && !held.has(lockName(name))) await base.removeEntry(name, { recursive: true }).catch(() => {});
+        }
+      }
+      diskDir = await base.getDirectoryHandle(SESSION, { create: true });
+      diskState = 'on';
+    } catch {
+      diskState = 'off';
+    }
+  })();
+  const limit = () => (diskState === 'off' ? MAX_BYTES : DISK_MAX);
+
+  /** Write a segment to its own file and let go of the bytes once that worked */
+  function persist(seg, name, bytes) {
+    seg.writing = diskReady
+      .then(async () => {
+        if (diskState !== 'on') return;
+        try {
+          const w = await (await diskDir.getFileHandle(name, { create: true })).createWritable();
+          await w.write(bytes);
+          await w.close();
+          seg.file = name;
+          seg.data = null;
+        } catch (e) {
+          if (e && e.name === 'QuotaExceededError') diskFull = true;
+          diskState = 'off'; // keep this and the next segments in memory
+        }
+      })
+      .finally(() => {
+        seg.writing = null;
+      });
+  }
+
+  /** Wait for pending writes and open the files, so the saver can slice them synchronously */
+  async function materialize(gs) {
+    for (const g of gs) {
+      for (const s of g.segs.values()) {
+        if (s.writing) await s.writing;
+        if (s.file && !s.blob) s.blob = await (await diskDir.getFileHandle(s.file)).getFile();
+      }
+    }
+  }
+
+  function dropFiles(g) {
+    if (!diskDir) return;
+    for (const s of g.segs.values()) if (s.file) diskDir.removeEntry(s.file).catch(() => {});
+  }
+
+  async function removeSession() {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const base = await root.getDirectoryHandle('victorload');
+      await base.removeEntry(SESSION, { recursive: true });
+    } catch {
+      // Nothing was written, or it is gone already
+    }
+  }
 
   const vidOf = () => {
     try {
@@ -210,10 +291,13 @@
     st.cur = g;
   }
 
-  function storeSeg(g, t, dur, data) {
+  function storeSeg(g, t, dur, data, samples) {
     if (t < 0) t = -1 - g.segs.size; // fall back to arrival order when the timestamp cannot be parsed
     if (g.segs.has(t)) return;
-    g.segs.set(t, { t, dur, data });
+    // samples: where each sample sits inside the segment (MP4 only), so the file can be built without reading the bytes
+    const seg = { t, dur, data, size: data.length, samples: samples || null, file: '', blob: null, writing: null };
+    g.segs.set(t, seg);
+    persist(seg, g.gid + '-' + ++segSeq, data);
     lastGroupId[g.kind] = g.gid;
     g.bytes += data.length;
     total += data.length;
@@ -240,12 +324,14 @@
   }
 
   // Every sample must be fully present, otherwise the segment is truncated or misaligned.
-  function segmentIsComplete(g, seg) {
+  // Returns the samples' positions, or null when the segment is not usable.
+  function segmentSamples(g, seg) {
     try {
       const smp = parseSamples(seg, g.trex || (g.trex = trexDefaults(g.init)));
-      return smp.length > 0 && smp.every((s) => s.data.length === s.size);
+      if (!smp.length || !smp.every((s) => s.data.length === s.size)) return null;
+      return smp.map((s) => ({ dur: s.dur, size: s.size, sync: s.sync, cts: s.cts, off: s.data.byteOffset - seg.byteOffset }));
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -311,7 +397,8 @@
           const seg = concat(st.moof, bytes);
           const moofBox = boxes(seg).find((x) => x.type === 'moof');
           const info = moofBox && parseMoof(seg, moofBox);
-          if (info && segmentIsComplete(g, seg)) storeSeg(g, info.t, info.dur, seg);
+          const samples = info && segmentSamples(g, seg);
+          if (samples) storeSeg(g, info.t, info.dur, seg, samples);
           else noteReject(g, seg);
         }
         st.moof = null;
@@ -322,7 +409,7 @@
   }
 
   function capture(st, data) {
-    if (total > MAX_BYTES) return;
+    if (total > limit()) return;
     const src = ArrayBuffer.isView(data)
       ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
       : new Uint8Array(data);
@@ -495,7 +582,10 @@
     }
     return {
       videoId: vid,
-      title: document.title.replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/, ''),
+      title: document.title
+        .replace(/^[【[]VL[^】\]]*[】\]]\s*/, '')
+        .replace(/^\(\d+\)\s*/, '')
+        .replace(/\s*-\s*YouTube$/, ''),
       duration: dur,
       video,
       audio,
@@ -503,7 +593,7 @@
       fillResult,
       rejected: rejectedCount,
       captureErrors: captureErrorCount,
-      full: total > MAX_BYTES,
+      full: total > limit() || diskFull,
     };
   }
 
@@ -524,6 +614,7 @@
     for (const [k, g] of groups) {
       if (g.vid !== vid) {
         total -= g.bytes;
+        dropFiles(g);
         groups.delete(k);
       }
     }
@@ -858,13 +949,8 @@
   function trackData(g) {
     const chunks = [];
     for (const s of sortedSegs(g)) {
-      let smp;
-      try {
-        smp = parseSamples(s.data, g.trex || (g.trex = trexDefaults(g.init)));
-      } catch {
-        continue; // skip a bad segment instead of failing the whole file
-      }
-      if (smp.length && smp.every((x) => x.data.length === x.size)) chunks.push({ sec: s.t / g.ts, samples: smp });
+      // Segments were checked when they were recorded; a bad one never got here
+      if (s.samples && s.samples.length) chunks.push({ sec: s.t / g.ts, seg: s, samples: s.samples });
     }
     const all = chunks.flatMap((c) => c.samples);
     return { g, chunks, all, dur: all.reduce((s, x) => s + x.dur, 0) };
@@ -878,7 +964,14 @@
     } else d.setUint32(cs + v0off, dur);
   };
 
-  function buildTrak(init, trakBox, td, tbl, movieTs, newId) {
+  const words64 = (arr) => {
+    const o = new Uint8Array(arr.length * 8);
+    const dv = new DataView(o.buffer);
+    arr.forEach((x, i) => dv.setBigUint64(i * 8, BigInt(x)));
+    return o;
+  };
+
+  function buildTrak(init, trakBox, td, tbl, movieTs, newId, big) {
     const parts = [];
     for (const c of boxes(init, trakBox.start + trakBox.hdr, trakBox.end)) {
       if (c.type === 'edts') continue;
@@ -915,7 +1008,8 @@
                 );
               sp.push(mk('stsc', [u32b(0), u32b(tbl.stsc.length), words(tbl.stsc.flat())]));
               sp.push(mk('stsz', [u32b(0), u32b(0), u32b(td.all.length), words(td.all.map((x) => x.size))]));
-              sp.push(mk('stco', [u32b(0), u32b(tbl.stco.length), words(tbl.stco)]));
+              if (big) sp.push(mk('co64', [u32b(0), u32b(tbl.stco.length), words64(tbl.stco)]));
+              else sp.push(mk('stco', [u32b(0), u32b(tbl.stco.length), words(tbl.stco)]));
               if (tbl.stss) sp.push(mk('stss', [u32b(0), u32b(tbl.stss.length), words(tbl.stss)]));
               ip.push(mk('stbl', sp));
             }
@@ -954,31 +1048,27 @@
     const rel = tds.map((td) => new Array(td.chunks.length).fill(0));
     const pieces = [];
     let off = 0;
+    // A slice of the segment: from the file on disk when it was written there, otherwise from memory
+    const sliceOf = (seg, a, len) => (seg.blob ? seg.blob.slice(a, a + len) : seg.data.subarray(a, a + len));
     for (const o of order) {
-      const smp = tds[o.ti].chunks[o.ci].samples;
+      const c = tds[o.ti].chunks[o.ci];
       rel[o.ti][o.ci] = off;
-      let contiguous = true;
-      for (let i = 1; i < smp.length; i++) {
-        const a = smp[i - 1].data;
-        const b = smp[i].data;
-        if (a.buffer !== b.buffer || a.byteOffset + a.length !== b.byteOffset) {
-          contiguous = false;
-          break;
+      let runStart = c.samples[0].off;
+      let runLen = 0;
+      for (const x of c.samples) {
+        if (x.off !== runStart + runLen) {
+          pieces.push(sliceOf(c.seg, runStart, runLen));
+          off += runLen;
+          runStart = x.off;
+          runLen = 0;
         }
+        runLen += x.size;
       }
-      if (contiguous) {
-        const a = smp[0].data;
-        const len = smp.reduce((s, x) => s + x.size, 0);
-        pieces.push(new Uint8Array(a.buffer, a.byteOffset, len));
-        off += len;
-      } else {
-        for (const x of smp) {
-          pieces.push(x.data);
-          off += x.size;
-        }
-      }
+      pieces.push(sliceOf(c.seg, runStart, runLen));
+      off += runLen;
     }
-    if (off + 8 > 0xffffffff) throw new Error('文件超过 4GB，无法生成标准 MP4');
+    // Offsets that do not fit 32 bits switch the file to co64 and a 64-bit mdat size
+    const big = off + 16 > BIG_AT;
 
     const tables = tds.map((td) => {
       const smp = td.all;
@@ -1002,6 +1092,7 @@
     const movieDur = Math.max(...tds.map((td) => Math.round((td.dur / td.g.ts) * movieTs)));
 
     const ftyp = mk('ftyp', [enc('isom'), u32b(512), enc('isomiso2avc1mp41')]);
+    const mdatHeadLen = big ? 16 : 8;
     const buildMoov = (base) => {
       const mvhd = vi.slice(mvhdBox.start, mvhdBox.end);
       setDur(mvhd, 8, 24, 16, movieDur);
@@ -1010,15 +1101,22 @@
         const moov = boxes(td.g.init).find((b) => b.type === 'moov');
         const trak = child(td.g.init, moov, 'trak');
         const tbl = { ...tables[i], stco: rel[i].map((r) => base + r) };
-        return buildTrak(td.g.init, trak, td, tbl, movieTs, ids[i].changed ? ids[i].id : 0);
+        return buildTrak(td.g.init, trak, td, tbl, movieTs, ids[i].changed ? ids[i].id : 0, big);
       });
       return mk('moov', [mvhd, ...traks]);
     };
     const moovLen = buildMoov(0).length;
-    const moov = buildMoov(ftyp.length + moovLen + 8);
-    const mdatHead = new Uint8Array(8);
-    new DataView(mdatHead.buffer).setUint32(0, off + 8);
-    mdatHead.set(enc('mdat'), 4);
+    const moov = buildMoov(ftyp.length + moovLen + mdatHeadLen);
+    const mdatHead = new Uint8Array(mdatHeadLen);
+    const mdv = new DataView(mdatHead.buffer);
+    if (big) {
+      mdv.setUint32(0, 1);
+      mdatHead.set(enc('mdat'), 4);
+      mdv.setBigUint64(8, BigInt(off + 16));
+    } else {
+      mdv.setUint32(0, off + 8);
+      mdatHead.set(enc('mdat'), 4);
+    }
     return [ftyp, moov, mdatHead, ...pieces];
   }
   const enc = (s) => new TextEncoder().encode(s);
@@ -1044,7 +1142,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 120000);
   }
 
-  function save(m) {
+  async function save(m) {
     const reply = (d) => post({ kind: 'mse-save', jobId: m.jobId, ...d });
     try {
       const vg = groups.get(m.vgid);
@@ -1060,6 +1158,7 @@
       }
       if (!vg && !ag) throw new Error('没有已缓冲的数据，请先播放视频');
       reply({ state: 'progress', pct: 10 });
+      await materialize([vg, ag].filter(Boolean));
       const files = [];
       if (vg && ag && vg.container === 'mp4' && ag.container === 'mp4') {
         files.push({ name: m.name + '.mp4', parts: flatMp4([vg, ag]) });
@@ -1071,12 +1170,12 @@
         if (vg)
           files.push({
             name: m.name + (ag ? '.video' : '') + (vg.container === 'webm' ? '.webm' : '.mp4'),
-            parts: [vg.init, ...sortedSegs(vg).map((s) => s.data)],
+            parts: [vg.init, ...sortedSegs(vg).map((s) => s.blob || s.data)],
           });
         if (ag)
           files.push({
             name: m.name + (vg ? '.audio' : '') + (ag.container === 'webm' ? '.webm' : '.m4a'),
-            parts: [ag.init, ...sortedSegs(ag).map((s) => s.data)],
+            parts: [ag.init, ...sortedSegs(ag).map((s) => s.blob || s.data)],
           });
       }
       reply({ state: 'progress', pct: 70 });
@@ -1090,12 +1189,95 @@
     }
   }
 
+  // ---- Download tab ----
+  // In "new tab" mode VictorLoad opens a background tab with ...&vl_dl=1&vl_h=<height>&vl_job=<id> (see
+  // downloadInTab in background.js). Nobody watches that tab, so it drives itself: play muted, wait for the
+  // video's own stream at the wanted height (not an ad), then fill the gaps and save, like "auto download".
+  const dlq = (k) => (String(location.search || '').match(new RegExp('[?&]' + k + '=([^&]*)')) || [])[1] || '';
+  const DL =
+    dlq('vl_dl') === '1'
+      ? { job: decodeURIComponent(dlq('vl_job')), h: +dlq('vl_h') || 0, name: decodeURIComponent(dlq('vl_name')), tag: decodeURIComponent(dlq('vl_tag')) }
+      : null;
+  let dlTarget = null; // the streams chosen for this tab's job; a "save anyway" reuses them
+  if (DL) {
+    // Pinning the quality can write the preferred quality, which is shared with the tab the user watches in
+    const readQ = () => {
+      try {
+        return localStorage.getItem('yt-player-quality');
+      } catch {
+        return null;
+      }
+    };
+    const savedQ = readQ();
+    window.addEventListener('pagehide', () => {
+      try {
+        if (savedQ === null) localStorage.removeItem('yt-player-quality');
+        else localStorage.setItem('yt-player-quality', savedQ);
+      } catch {
+        // Storage is blocked: nothing to restore
+      }
+    });
+    // Mark the tab, so a tab that suddenly appears is recognised as ours. The marker stays while the recording runs;
+    // YouTube rewrites the title now and then, so it is put back. A tab waiting for an answer (parts missing) shows no marker.
+    const tag = DL.tag; // already in the extension's language (see downloadInTab)
+    const stripTag = (s) => s.replace(/^[【[]VL[^】\]]*[】\]]\s*/, '');
+    setInterval(() => {
+      const base = stripTag(document.title);
+      const want = tag && (!dlTarget || autoJob) ? tag + ' ' + base : base;
+      if (document.title !== want) document.title = want;
+    }, 500);
+    const t0 = Date.now();
+    let locked = false;
+    let adEnd = 0; // when the last ad stopped showing
+    const fail = (error) => {
+      clearInterval(dlTimer);
+      post({ kind: 'mse-save', jobId: DL.job, state: 'error', error });
+    };
+    const dlTimer = setInterval(() => {
+      if (dlTarget) return clearInterval(dlTimer);
+      const v = mainVideo();
+      const pl = document.getElementById('movie_player');
+      const ad = !!(pl && pl.classList.contains('ad-showing'));
+      if (v) {
+        if (v.paused || !v.muted) {
+          v.muted = true;
+          v.play().catch(() => {});
+        }
+        if (ad) {
+          adEnd = 0;
+          const skip = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button');
+          if (skip) skip.click();
+        } else if (!adEnd) adEnd = Date.now();
+        if (!ad && !locked && DL.h) locked = !!lockQuality(DL.h);
+      }
+      const age = Date.now() - t0;
+      if (age > 120000) return fail('后台标签页没有获取到视频数据');
+      // Wait until the ad (if any) is over and the video itself has been playing for a moment
+      if (!v || ad || !adEnd || Date.now() - adEnd < 3000 || v.currentTime < 2) return;
+      const vid = vidOf();
+      const vids = [...groups.values()].filter((g) => g.vid === vid && g.kind === 'video' && g.h > 0);
+      const want = vids.filter((g) => !DL.h || g.h === DL.h);
+      // The wanted height is normally there within seconds; later, settle for the tallest one not above it
+      const pool = want.length ? want : age > 30000 ? vids.filter((g) => !DL.h || g.h <= DL.h) : [];
+      const vg = pool.sort((a, b) => b.h - a.h || b.bytes - a.bytes)[0];
+      const ag = [...groups.values()].filter((g) => g.vid === vid && g.kind === 'audio').sort((a, b) => b.bytes - a.bytes)[0];
+      if (!vg || !ag) return;
+      dlTarget = { vgid: vg.gid, agid: ag.gid };
+      clearInterval(dlTimer);
+      autoSave({ jobId: DL.job, name: DL.name, ...dlTarget });
+    }, 500);
+  }
+
   window.addEventListener('message', (e) => {
     if (e.source !== window || !e.data || e.data.__victorloadCmd !== 1) return;
     const m = e.data;
+    if (DL && dlTarget && !m.vgid && (m.cmd === 'save' || m.cmd === 'autosave')) Object.assign(m, dlTarget);
+    if (DL && !m.name) m.name = DL.name;
     if (m.cmd === 'save') save(m);
     else if (m.cmd === 'autosave') autoSave(m);
-    else if (m.cmd === 'fill-stop') {
+    else if (m.cmd === 'cleanup') {
+      removeSession().then(() => post({ kind: 'mse-control', requestId: m.requestId, ok: true }));
+    } else if (m.cmd === 'fill-stop') {
       stopFill('stopped');
       post({ kind: 'mse-control', requestId: m.requestId, ok: true });
     } else if (m.cmd === 'status') sendStatus();

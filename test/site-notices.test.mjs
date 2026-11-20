@@ -68,3 +68,44 @@ test('an unsupported selected quality still explains the disabled button when ca
   assert.equal(message.error, true);
   assert.match(message.text, /不支持的加密方式/);
 });
+
+const fmt = (mime, height) => ({ mimeType: mime, height, bitrate: 1000 });
+const adaptive = [
+  fmt('video/mp4; codecs="avc1.640028"', 1080),
+  fmt('video/mp4; codecs="avc1.4d401f"', 720),
+  fmt('video/mp4; codecs="av01.0.12M.08"', 2160), // AV1 in mp4: not H.264
+  fmt('video/webm; codecs="vp9"', 2160),
+  fmt('audio/mp4; codecs="mp4a.40.2"', 0),
+];
+
+test('new-tab mode offers every H.264 height up to 1080p, even when no direct link is available', async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      videoDetails: { title: 'Test', lengthSeconds: '12' },
+      streamingData: { adaptiveFormats: adaptive },
+    });
+  const [item] = await extractSite('youtube', 'https://www.youtube.com/watch?v=abc123', { ytMode: 'tab' });
+  assert.deepEqual(
+    item.qualities.map((q) => [q.type, q.height]),
+    [
+      ['tab', 1080],
+      ['tab', 720],
+    ],
+  );
+  assert.equal(item.waitingForCapture, false);
+});
+
+test('new-tab mode shows no options (and no warm-up hint) when there is no H.264 + AAC', async () => {
+  globalThis.fetch = async () =>
+    Response.json({ videoDetails: {}, streamingData: { adaptiveFormats: adaptive.filter((f) => !/avc1/.test(f.mimeType)) } });
+  const [item] = await extractSite('youtube', 'https://www.youtube.com/watch?v=abc123', { ytMode: 'tab' });
+  assert.deepEqual(item.qualities, []);
+  assert.equal(item.waitingForCapture, false);
+  assert.equal(videoNotice(item).text, '');
+});
+
+test('the other modes do not list new-tab qualities', async () => {
+  globalThis.fetch = async () => Response.json({ videoDetails: {}, streamingData: { adaptiveFormats: adaptive } });
+  const [item] = await extractSite('youtube', 'https://www.youtube.com/watch?v=abc123', { ytMode: 'page' });
+  assert.ok(!item.qualities.some((q) => q.type === 'tab'));
+});
